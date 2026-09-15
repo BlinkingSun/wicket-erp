@@ -49,11 +49,28 @@ What acceptance binds:
 - Tauri v2 carries the same application to macOS, Linux, Windows, Android and iOS. A browser
   on the LAN remains a complete client for v1, so no platform shell is load-bearing.
 
-What acceptance does **not** unblock: interface work waits on Goal 2. A wrapper can only be
-honest about "every function has an API" once the capability table actually covers the
-engine. Today it does not — `wicket-identity` exposes login and logout and nothing else,
-and numbering, units of measure, the module registry and the ledger are unreachable
-(`TODO.md` T-31..T-42, gate T-43).
+**What actually gates interface work — corrected 2026-09-15.** An earlier version of this note
+said "interface work waits on Goal 2". That was the expensive reading of the facts and it is
+withdrawn. This ADR binds the UI to the generated client and the HTTP API; it does not bind it
+to Goal 2 completeness.
+
+The real gate is **T-35**. The served document
+(`crates/wicket-server/src/openapi.rs`) emits, per operation, only an `operationId`, an
+`x-wicket-permission` and a `responses` block of bare descriptions — no `requestBody`, no
+response `content`, and no `parameters`, so `/api/v1/items/{id}` does not even declare `{id}`.
+`components.schemas` holds one entry, `ErrorEnvelope`. A client generated from that document is
+`getPrincipal(): Promise<unknown>` — untyped `fetch` with named functions. **Until T-35 emits
+request and response schemas, the one generated client this ADR requires cannot exist**, and
+mounting further operations lengthens the index without typing the client.
+
+A first screen additionally needs a **human-identifier lookup** — item number, work-order
+number, lot and serial identifier resolved to ids. That is the scan box on
+`design/mockup-shop-floor.png`, an operator scans a part number and not a UUID, and it appears
+nowhere in `TODO.md`. `traceGenealogy` also needs widening to the crate's real origins
+(`serial` / `lot` / `posting`).
+
+Coverage items the three approved mockups do not press — T-31, T-32, T-37 through T-43 — can
+land underneath a running UI. Evidence: `_team/reports/spike-ui-gap.md`.
 
 ## Decision
 
