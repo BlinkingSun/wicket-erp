@@ -50,6 +50,7 @@ The specific conditions that should reopen this.
 | [0008](0008-single-tenant.md) | Single tenant per installation; residency is an installation property | Proposed |
 | [0009](0009-ui-stack.md) | TypeScript and React for the UI, Tauri for the desktop shell | **Accepted** (2026-09-15) |
 | [0010](0010-one-registry.md) | One capability registry generates the router, the document, and the agent surface | Proposed |
+| [0011](0011-openapi-schemas.md) | Schemas in the served document are derived from Rust types, not hand-written | **Accepted** (2026-09-15) |
 
 0003 is Accepted, as amended; 0006 is Accepted. Everything else is Proposed. Proposed
 means it is the current recommendation and the docs are written as though it holds.
