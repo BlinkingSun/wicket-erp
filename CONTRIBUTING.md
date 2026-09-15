@@ -140,9 +140,9 @@ Copyright of the original work is held by the project owner (Josh, as recorded i
 
 Open an issue before a large change. The forms are bug, feature, module proposal, and request for comment; a blank issue is disabled on purpose, because every one of those four needs different information.
 
-Labels come from a closed set: `type:*` for the kind of work, `area:kernel|module|docs|gov|ci` for where it lands, and `goal:agent|api|migrate|gov` for which goal it serves.
+Labels come from a closed set: `type:*` for the kind of work, `area:kernel|module|docs|gov|ci` for where it lands, and `goal:agent|api|migrate|gov` for which goal it serves. That set exists on the repository; it is not aspirational.
 
-`good-first-issue` is only ever applied to documentation, licence headers, test names, validation documents, and lint scripts. It is never applied to the ledger, the audit chain, or the database session protocol. Those three are where a well-meaning first contribution does real damage, and no newcomer should be steered into them.
+`good first issue` (GitHub's default label, spelled with spaces) is only ever applied to documentation, licence headers, test names, validation documents, and lint scripts. It is never applied to the ledger, the audit chain, or the database session protocol. Those three are where a well-meaning first contribution does real damage, and no newcomer should be steered into them.
 
 ## 11. Security and conduct
 
