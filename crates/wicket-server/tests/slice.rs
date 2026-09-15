@@ -21,10 +21,10 @@ use wicket_core::{
 };
 use wicket_db::{Tx, WriteContext, WritePool};
 use wicket_ledger::{GroupBuilder, post, rebuild, verify_projection};
-use wicket_module::Profile;
+use wicket_module::{Profile, SignatureEdge};
 use wicket_server::{
-    Config, bootstrap_against_app, capability_operations, openapi_document, registered_operations,
-    rewrite_database, run_iq, startup_guard_release, with_os_userinfo,
+    Config, bootstrap_against_app, capabilities, capability_operations, openapi_document,
+    registered_operations, rewrite_database, run_iq, startup_guard_release, with_os_userinfo,
 };
 use wicket_statemachine::{EdgeBuilder, Engine, Machine};
 
@@ -1636,6 +1636,284 @@ async fn served_openapi_matches_committed_operation_fixture() {
             "served OpenAPI",
             "committed operation fixture",
         );
+    }
+}
+
+fn path_placeholders(path: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = path;
+    while let Some(start) = rest.find('{') {
+        rest = &rest[start + 1..];
+        let Some(end) = rest.find('}') else {
+            break;
+        };
+        out.push(&rest[..end]);
+        rest = &rest[end + 1..];
+    }
+    out
+}
+
+fn served_operation<'a>(doc: &'a Value, cap: &wicket_server::Capability) -> &'a Value {
+    let method = cap.method.to_ascii_lowercase();
+    let op = &doc["paths"][cap.path][&method];
+    assert!(
+        op.is_object(),
+        "missing {} {} in served document",
+        cap.method,
+        cap.path
+    );
+    assert_eq!(
+        op["operationId"].as_str(),
+        Some(cap.id),
+        "{} {} operationId",
+        cap.method,
+        cap.path
+    );
+    op
+}
+
+fn param<'a>(op: &'a Value, name: &str, loc: &str) -> Option<&'a Value> {
+    op.get("parameters")?
+        .as_array()?
+        .iter()
+        .find(|p| p["name"] == name && p["in"] == loc)
+}
+
+fn engine_required<'a>(
+    edges: &'a [SignatureEdge],
+    doc_type: &str,
+    edge: &str,
+) -> Option<(&'a str, &'a str)> {
+    edges.iter().find_map(|declared| match declared {
+        SignatureEdge::Required {
+            module,
+            edge: name,
+            meaning,
+            permission,
+        } if module == doc_type && name == edge => Some((meaning.as_str(), permission.as_str())),
+        _ => None,
+    })
+}
+
+fn advertised_signature(op: &Value) -> Option<(&str, &str)> {
+    let ext = op.get("x-wicket-signature")?;
+    Some((
+        ext.get("meaning")?.as_str()?,
+        ext.get("permission")?.as_str()?,
+    ))
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn served_openapi_describes_inputs_from_handlers_and_engine() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    let query_fields: &[(&str, &[(&str, bool)])] = &[
+        (
+            "listItems",
+            &[
+                ("limit", false),
+                ("cursor", false),
+                ("kind", false),
+                ("status", false),
+                ("number_prefix", false),
+            ],
+        ),
+        ("listLocations", &[("limit", false), ("cursor", false)]),
+        ("listLots", &[("limit", false), ("cursor", false)]),
+        ("listLocationTree", &[("include_inactive", false)]),
+        (
+            "listWorkOrders",
+            &[("limit", false), ("cursor", false), ("status", false)],
+        ),
+        (
+            "getOnHand",
+            &[("item_id", true), ("location_id", false), ("lot_id", false)],
+        ),
+        (
+            "traceGenealogy",
+            &[("from_lot_id", true), ("direction", false)],
+        ),
+        ("listCustomFieldDefinitions", &[("entity", true)]),
+    ];
+    for profile in profiles() {
+        let w = common::boot(profile).await;
+        let (st, doc) = w.get("/api/v1/openapi.json").await;
+        assert_eq!(st, StatusCode::OK, "{doc}");
+        let listed = registered_operations(&doc);
+        assert_eq!(listed.len(), 65, "operation set must stay at 65");
+
+        let mut path_rows = 0usize;
+        let mut signed = 0usize;
+        for cap in capabilities() {
+            let op = served_operation(&doc, cap);
+            let placeholders = path_placeholders(cap.path);
+            if !placeholders.is_empty() {
+                path_rows += 1;
+            }
+            for name in &placeholders {
+                let p = param(op, name, "path")
+                    .unwrap_or_else(|| panic!("{} missing path parameter {{{name}}}", cap.id));
+                assert_eq!(p["required"], true, "{} {{{name}}} required", cap.id);
+                assert_eq!(p["schema"]["type"], "string", "{} {{{name}}} type", cap.id);
+                assert_eq!(
+                    p["schema"]["format"], "uuid",
+                    "{} {{{name}}} format",
+                    cap.id
+                );
+            }
+            if let Some(arr) = op.get("parameters").and_then(Value::as_array) {
+                for p in arr {
+                    if p["in"] == "path" {
+                        let name = p["name"].as_str().expect("path param name");
+                        assert!(
+                            placeholders.contains(&name),
+                            "{} advertises path parameter {name} not in {}",
+                            cap.id,
+                            cap.path
+                        );
+                    }
+                    assert_ne!(
+                        p["name"], "X-CSRF-Token",
+                        "{} must not advertise X-CSRF-Token (cookie-only)",
+                        cap.id
+                    );
+                }
+            }
+
+            let expected_sig = if cap.id == "setLotStatus" {
+                None
+            } else if let (Some(doc_type), Some(edge)) = (cap.doc_type, cap.edge) {
+                engine_required(&w.state.kernel().profile.signature_edges, doc_type, edge)
+            } else {
+                None
+            };
+            let advertised = advertised_signature(op);
+            match (expected_sig, advertised) {
+                (Some((meaning, permission)), Some((got_m, got_p))) => {
+                    assert_eq!(got_m, meaning, "{} meaning must match the engine", cap.id);
+                    assert_eq!(
+                        got_p, permission,
+                        "{} signature permission must match the engine",
+                        cap.id
+                    );
+                    let hdr = param(op, "X-Wicket-Signature", "header")
+                        .unwrap_or_else(|| panic!("{} missing X-Wicket-Signature header", cap.id));
+                    assert_eq!(
+                        hdr["required"], true,
+                        "{} X-Wicket-Signature required",
+                        cap.id
+                    );
+                    signed += 1;
+                }
+                (None, None) => {
+                    assert!(
+                        param(op, "X-Wicket-Signature", "header").is_none(),
+                        "{} must not advertise X-Wicket-Signature",
+                        cap.id
+                    );
+                }
+                (expected, got) => panic!(
+                    "{} signature mismatch: engine {expected:?} advertised {got:?}",
+                    cap.id
+                ),
+            }
+            if cap.id == "setLotStatus" {
+                assert!(
+                    advertised.is_none(),
+                    "setLotStatus must not advertise x-wicket-signature"
+                );
+            }
+            if cap.id == "esignChallenge" {
+                assert!(
+                    param(op, "Idempotency-Key", "header").is_none(),
+                    "esignChallenge must not require Idempotency-Key"
+                );
+            }
+            if cap.method == "GET" {
+                assert!(
+                    param(op, "Idempotency-Key", "header").is_none(),
+                    "{} GET must not require Idempotency-Key",
+                    cap.id
+                );
+                assert!(
+                    param(op, "If-Match", "header").is_none(),
+                    "{} GET must not require If-Match",
+                    cap.id
+                );
+            }
+        }
+        assert_eq!(path_rows, 31, "31 capability rows carry a path placeholder");
+
+        for (op_id, fields) in query_fields {
+            let cap = capabilities()
+                .find(|c| c.id == *op_id)
+                .unwrap_or_else(|| panic!("missing capability {op_id}"));
+            let op = served_operation(&doc, cap);
+            for (name, required) in *fields {
+                let p = param(op, name, "query")
+                    .unwrap_or_else(|| panic!("{op_id} missing query parameter {name}"));
+                assert_eq!(
+                    p["required"], *required,
+                    "{op_id} {name} required={required}"
+                );
+            }
+            if fields.iter().any(|(n, _)| *n == "limit") {
+                let limit = param(op, "limit", "query").expect("limit");
+                assert_eq!(limit["schema"]["minimum"], 1, "{op_id} limit minimum");
+                assert_eq!(limit["schema"]["maximum"], 200, "{op_id} limit maximum");
+                assert_eq!(limit["schema"]["default"], 50, "{op_id} limit default");
+            }
+        }
+
+        let update = served_operation(&doc, capabilities().find(|c| c.id == "updateItem").unwrap());
+        assert!(param(update, "Idempotency-Key", "header").is_some());
+        assert!(param(update, "If-Match", "header").is_some());
+        let set_fields = served_operation(
+            &doc,
+            capabilities()
+                .find(|c| c.id == "setItemCustomFields")
+                .unwrap(),
+        );
+        assert!(param(set_fields, "Idempotency-Key", "header").is_some());
+        assert!(
+            param(set_fields, "If-Match", "header").is_none(),
+            "setItemCustomFields has no version check"
+        );
+        let deactivate = served_operation(
+            &doc,
+            capabilities()
+                .find(|c| c.id == "deactivateLocation")
+                .unwrap(),
+        );
+        assert!(param(deactivate, "If-Match", "header").is_some());
+        for id in [
+            "createPrincipal",
+            "renamePrincipal",
+            "deactivatePrincipal",
+            "resetLoginCredential",
+            "changeOwnLoginCredential",
+            "setOwnSigningCredential",
+        ] {
+            let op = served_operation(&doc, capabilities().find(|c| c.id == id).unwrap());
+            assert!(
+                param(op, "Idempotency-Key", "header").is_some(),
+                "{id} Idempotency-Key"
+            );
+            assert!(
+                param(op, "If-Match", "header").is_none(),
+                "{id} has no version column"
+            );
+        }
+
+        match w.profile {
+            wicket_module::ProfileId::PlainShop => {
+                assert_eq!(signed, 0, "plain-shop Required set is empty");
+            }
+            wicket_module::ProfileId::RegulatedDevice => {
+                assert_eq!(signed, 3, "regulated-device Required mounted operations");
+            }
+        }
     }
 }
 

@@ -31,6 +31,8 @@ pub struct Capability {
     pub module: Option<&'static str>,
     /// State-machine edge name when [`CapabilityKind::Transition`].
     pub edge: Option<&'static str>,
+    /// Engine document type for the `(doc_type, edge)` signature join.
+    pub doc_type: Option<&'static str>,
 }
 
 const fn kernel(
@@ -40,6 +42,7 @@ const fn kernel(
     path: &'static str,
     permission: &'static str,
     edge: Option<&'static str>,
+    doc_type: Option<&'static str>,
 ) -> Capability {
     Capability {
         id,
@@ -49,9 +52,11 @@ const fn kernel(
         permission,
         module: None,
         edge,
+        doc_type,
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 const fn module(
     id: &'static str,
     kind: CapabilityKind,
@@ -60,6 +65,7 @@ const fn module(
     permission: &'static str,
     module: &'static str,
     edge: Option<&'static str>,
+    doc_type: Option<&'static str>,
 ) -> Capability {
     Capability {
         id,
@@ -69,18 +75,28 @@ const fn module(
         permission,
         module: Some(module),
         edge,
+        doc_type,
     }
 }
 
 /// Kernel (and kernel-crate) operations. Not declared in `modules/*/module.toml`.
 pub const KERNEL: &[Capability] = &[
-    kernel("health", CapabilityKind::Http, "GET", "/health", "", None),
+    kernel(
+        "health",
+        CapabilityKind::Http,
+        "GET",
+        "/health",
+        "",
+        None,
+        None,
+    ),
     kernel(
         "getOpenApi",
         CapabilityKind::Http,
         "GET",
         "/api/v1/openapi.json",
         "",
+        None,
         None,
     ),
     kernel(
@@ -90,6 +106,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/iq/manifest",
         "validation.manifest.read",
         None,
+        None,
     ),
     kernel(
         "exportAudit",
@@ -97,6 +114,7 @@ pub const KERNEL: &[Capability] = &[
         "GET",
         "/api/v1/audit",
         "audit.export",
+        None,
         None,
     ),
     kernel(
@@ -106,6 +124,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/navigation",
         "identity.session",
         None,
+        None,
     ),
     kernel(
         "login",
@@ -113,6 +132,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/identity/login",
         "",
+        None,
         None,
     ),
     kernel(
@@ -122,6 +142,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/identity/logout",
         "identity.session",
         None,
+        None,
     ),
     kernel(
         "createPrincipal",
@@ -129,6 +150,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/identity/principals",
         "identity.manage",
+        None,
         None,
     ),
     kernel(
@@ -138,6 +160,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/identity/principals/{id}",
         "identity.manage",
         None,
+        None,
     ),
     kernel(
         "renamePrincipal",
@@ -145,6 +168,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/identity/principals/{id}/rename",
         "identity.manage",
+        None,
         None,
     ),
     kernel(
@@ -154,6 +178,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/identity/principals/{id}/deactivate",
         "identity.manage",
         None,
+        None,
     ),
     kernel(
         "resetLoginCredential",
@@ -161,6 +186,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/identity/principals/{id}/login-credential",
         "identity.manage",
+        None,
         None,
     ),
     kernel(
@@ -170,6 +196,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/identity/me",
         "identity.session",
         None,
+        None,
     ),
     kernel(
         "changeOwnLoginCredential",
@@ -177,6 +204,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/identity/me/login-credential",
         "identity.session",
+        None,
         None,
     ),
     kernel(
@@ -186,6 +214,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/identity/me/signing-credential",
         "identity.session",
         None,
+        None,
     ),
     kernel(
         "approveCalibration",
@@ -194,6 +223,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/calibration/certificates/{id}/approve",
         "calibration.approve",
         Some("approve"),
+        Some("calibration.certificate"),
     ),
     kernel(
         "esignChallenge",
@@ -201,6 +231,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/esign/challenges",
         "identity.session",
+        None,
         None,
     ),
     kernel(
@@ -210,6 +241,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/esign/signatures",
         "identity.session",
         None,
+        None,
     ),
     kernel(
         "getEsignSignature",
@@ -217,6 +249,7 @@ pub const KERNEL: &[Capability] = &[
         "GET",
         "/api/v1/esign/signatures/{id}",
         "identity.session",
+        None,
         None,
     ),
     kernel(
@@ -226,6 +259,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/esign/signatures/{id}/bundle",
         "esign.bundle.read",
         None,
+        None,
     ),
     kernel(
         "defineCustomField",
@@ -233,6 +267,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/customfields/definitions",
         "customfields.define",
+        None,
         None,
     ),
     kernel(
@@ -242,6 +277,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/customfields/definitions",
         "customfields.view",
         None,
+        None,
     ),
     kernel(
         "retireCustomField",
@@ -250,6 +286,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/customfields/definitions/{id}/retire",
         "customfields.retire",
         Some("retire"),
+        Some("customfields.definition"),
     ),
     kernel(
         "setItemCustomFields",
@@ -257,6 +294,7 @@ pub const KERNEL: &[Capability] = &[
         "PUT",
         "/api/v1/items/{id}/custom-fields",
         "customfields.set",
+        None,
         None,
     ),
     kernel(
@@ -266,6 +304,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/items/{id}/custom-fields",
         "customfields.view",
         None,
+        None,
     ),
     kernel(
         "createDocument",
@@ -273,6 +312,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/documents",
         "documents.edit",
+        None,
         None,
     ),
     kernel(
@@ -282,6 +322,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/documents/{id}",
         "documents.view",
         None,
+        None,
     ),
     kernel(
         "createDocumentRevision",
@@ -289,6 +330,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/documents/{id}/revisions",
         "documents.edit",
+        None,
         None,
     ),
     kernel(
@@ -298,6 +340,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/documents/{id}/submit",
         "documents.edit",
         Some("submit"),
+        Some("document"),
     ),
     kernel(
         "approveDocument",
@@ -306,6 +349,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/documents/{id}/approve",
         "documents.approve",
         Some("approve"),
+        Some("document"),
     ),
     kernel(
         "listPrintTemplates",
@@ -313,6 +357,7 @@ pub const KERNEL: &[Capability] = &[
         "GET",
         "/api/v1/print/templates",
         "print.templates",
+        None,
         None,
     ),
     kernel(
@@ -322,6 +367,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/print/render",
         "print.render",
         None,
+        None,
     ),
     kernel(
         "archivePrint",
@@ -329,6 +375,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/print/archive",
         "print.archive",
+        None,
         None,
     ),
     kernel(
@@ -338,6 +385,7 @@ pub const KERNEL: &[Capability] = &[
         "/api/v1/inventory/releases",
         "lots.release",
         Some("release"),
+        Some("lot"),
     ),
     kernel(
         "reverseIssue",
@@ -345,6 +393,7 @@ pub const KERNEL: &[Capability] = &[
         "POST",
         "/api/v1/inventory/reversals",
         "inventory.adjust",
+        None,
         None,
     ),
 ];
@@ -359,6 +408,7 @@ pub const MODULE: &[Capability] = &[
         "items.view",
         "mod-items",
         None,
+        None,
     ),
     module(
         "createItem",
@@ -367,6 +417,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/items",
         "items.edit",
         "mod-items",
+        None,
         None,
     ),
     module(
@@ -377,6 +428,7 @@ pub const MODULE: &[Capability] = &[
         "items.view",
         "mod-items",
         None,
+        None,
     ),
     module(
         "updateItem",
@@ -385,6 +437,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/items/{id}",
         "items.edit",
         "mod-items",
+        None,
         None,
     ),
     module(
@@ -395,6 +448,7 @@ pub const MODULE: &[Capability] = &[
         "items.release",
         "mod-items",
         Some("release"),
+        Some("items"),
     ),
     module(
         "listLocations",
@@ -403,6 +457,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/locations",
         "locations.view",
         "mod-locations",
+        None,
         None,
     ),
     module(
@@ -413,6 +468,7 @@ pub const MODULE: &[Capability] = &[
         "locations.edit",
         "mod-locations",
         None,
+        None,
     ),
     module(
         "getLocation",
@@ -421,6 +477,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/locations/{id}",
         "locations.view",
         "mod-locations",
+        None,
         None,
     ),
     module(
@@ -431,6 +488,7 @@ pub const MODULE: &[Capability] = &[
         "locations.view",
         "mod-locations",
         None,
+        None,
     ),
     module(
         "deactivateLocation",
@@ -439,6 +497,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/locations/{id}/deactivate",
         "locations.edit",
         "mod-locations",
+        None,
         None,
     ),
     module(
@@ -449,6 +508,7 @@ pub const MODULE: &[Capability] = &[
         "lots.view",
         "mod-lots",
         None,
+        None,
     ),
     module(
         "createLot",
@@ -457,6 +517,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/lots",
         "lots.edit",
         "mod-lots",
+        None,
         None,
     ),
     module(
@@ -467,6 +528,7 @@ pub const MODULE: &[Capability] = &[
         "lots.view",
         "mod-lots",
         None,
+        None,
     ),
     module(
         "setLotStatus",
@@ -476,6 +538,7 @@ pub const MODULE: &[Capability] = &[
         "lots.release",
         "mod-lots",
         Some("release"),
+        Some("lot"),
     ),
     module(
         "listPackages",
@@ -484,6 +547,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/lots/{id}/packages",
         "lots.view",
         "mod-lots",
+        None,
         None,
     ),
     module(
@@ -494,6 +558,7 @@ pub const MODULE: &[Capability] = &[
         "lots.edit",
         "mod-lots",
         None,
+        None,
     ),
     module(
         "listSerials",
@@ -502,6 +567,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/lots/{id}/serials",
         "lots.view",
         "mod-lots",
+        None,
         None,
     ),
     module(
@@ -512,6 +578,7 @@ pub const MODULE: &[Capability] = &[
         "lots.edit",
         "mod-lots",
         None,
+        None,
     ),
     module(
         "createReceipt",
@@ -520,6 +587,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/inventory/receipts",
         "inventory.receive",
         "mod-inventory",
+        None,
         None,
     ),
     module(
@@ -530,6 +598,7 @@ pub const MODULE: &[Capability] = &[
         "inventory.count",
         "mod-inventory",
         None,
+        None,
     ),
     module(
         "getOnHand",
@@ -538,6 +607,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/inventory/on-hand",
         "inventory.view",
         "mod-inventory",
+        None,
         None,
     ),
     module(
@@ -548,6 +618,7 @@ pub const MODULE: &[Capability] = &[
         "production.view",
         "mod-production-min",
         None,
+        None,
     ),
     module(
         "createWorkOrder",
@@ -556,6 +627,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/work-orders",
         "production.create",
         "mod-production-min",
+        None,
         None,
     ),
     module(
@@ -566,6 +638,7 @@ pub const MODULE: &[Capability] = &[
         "production.view",
         "mod-production-min",
         None,
+        None,
     ),
     module(
         "releaseWorkOrder",
@@ -575,6 +648,7 @@ pub const MODULE: &[Capability] = &[
         "production.release",
         "mod-production-min",
         Some("release"),
+        Some("production"),
     ),
     module(
         "issueWorkOrder",
@@ -584,6 +658,7 @@ pub const MODULE: &[Capability] = &[
         "production.issue",
         "mod-production-min",
         Some("issue"),
+        Some("production"),
     ),
     module(
         "completeWorkOrder",
@@ -593,6 +668,7 @@ pub const MODULE: &[Capability] = &[
         "production.complete",
         "mod-production-min",
         Some("complete"),
+        Some("production"),
     ),
     module(
         "traceGenealogy",
@@ -601,6 +677,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/genealogy/trace",
         "genealogy.view",
         "mod-genealogy",
+        None,
         None,
     ),
     module(
@@ -611,6 +688,7 @@ pub const MODULE: &[Capability] = &[
         "genealogy.view",
         "mod-genealogy",
         None,
+        None,
     ),
     module(
         "getGenealogyJob",
@@ -619,6 +697,7 @@ pub const MODULE: &[Capability] = &[
         "/api/v1/genealogy/jobs/{id}",
         "genealogy.view",
         "mod-genealogy",
+        None,
         None,
     ),
 ];
@@ -690,5 +769,31 @@ mod tests {
             65,
             "keep in lockstep with the live mount set"
         );
+    }
+
+    #[test]
+    fn transition_rows_carry_doc_type_after_edge() {
+        let transitions: Vec<_> = table()
+            .filter(|c| c.kind == CapabilityKind::Transition)
+            .collect();
+        assert_eq!(transitions.len(), 10, "Transition count is the mounted set");
+        for cap in &transitions {
+            assert!(cap.edge.is_some(), "{} missing edge", cap.id);
+            assert!(cap.doc_type.is_some(), "{} missing doc_type", cap.id);
+        }
+        for cap in table().filter(|c| c.kind == CapabilityKind::Http) {
+            assert!(cap.edge.is_none(), "{} Http must not carry edge", cap.id);
+            assert!(
+                cap.doc_type.is_none(),
+                "{} Http must not carry doc_type",
+                cap.id
+            );
+        }
+        let set_lot = transitions
+            .iter()
+            .find(|c| c.id == "setLotStatus")
+            .expect("setLotStatus");
+        assert_eq!(set_lot.edge, Some("release"));
+        assert_eq!(set_lot.doc_type, Some("lot"));
     }
 }
