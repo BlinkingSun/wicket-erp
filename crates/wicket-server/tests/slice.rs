@@ -12,7 +12,7 @@ mod common;
 use axum::http::StatusCode;
 use common::{World, pass, qty};
 use serde_json::{Value, json};
-use sqlx::query_scalar;
+use sqlx::{query_as, query_scalar};
 use std::collections::BTreeSet;
 use tower::ServiceExt;
 use wicket_core::{
@@ -1683,10 +1683,31 @@ async fn get_handlers_are_read_only() {
         "esign_manifestation_inner",
         "esign_bundle",
         "esign_bundle_inner",
+        "definitions_for",
+        "definitions_for_inner",
+        "get_item_fields",
+        "get_item_fields_inner",
+        "get_document",
+        "get_document_inner",
+        "list_templates",
+        "list_templates_inner",
+        "get_principal",
+        "get_principal_inner",
+        "get_own_profile",
+        "get_own_profile_inner",
     ];
-    let src = include_str!("../src/handlers/mod.rs");
+    const HANDLER_SRCS: &[(&str, &str)] = &[
+        ("mod.rs", include_str!("../src/handlers/mod.rs")),
+        (
+            "customfields.rs",
+            include_str!("../src/handlers/customfields.rs"),
+        ),
+        ("documents.rs", include_str!("../src/handlers/documents.rs")),
+        ("print.rs", include_str!("../src/handlers/print.rs")),
+        ("identity.rs", include_str!("../src/handlers/identity.rs")),
+    ];
     for name in GET_FNS {
-        let body = fn_src(src, name);
+        let body = fn_src_in(HANDLER_SRCS, name);
         assert_eq!(
             body.matches("Tx::begin").count(),
             0,
@@ -1742,11 +1763,17 @@ async fn get_handlers_are_read_only() {
             format!("/api/v1/genealogy/trace?from_lot_id={lot}&direction=forward"),
             format!("/api/v1/genealogy/impact/{lot}"),
             format!("/api/v1/genealogy/jobs/{}", uuid::Uuid::nil()),
+            "/api/v1/customfields/definitions?entity=items.item".into(),
+            format!("/api/v1/items/{item}/custom-fields"),
+            format!("/api/v1/documents/{}", uuid::Uuid::nil()),
+            "/api/v1/print/templates".into(),
+            "/api/v1/identity/me".into(),
+            format!("/api/v1/identity/principals/{}", uuid::Uuid::nil()),
         ];
         for uri in &gets {
             let (st, body) = w.get(uri).await;
             assert!(
-                st.is_success() || st == StatusCode::NOT_FOUND,
+                st.is_success() || st == StatusCode::NOT_FOUND || st == StatusCode::FORBIDDEN,
                 "GET {uri} {st} {body}"
             );
         }
@@ -1761,6 +1788,16 @@ async fn get_handlers_are_read_only() {
             "genealogy GET must not commit cache_put"
         );
     }
+}
+
+fn fn_src_in<'a>(srcs: &[(&'static str, &'a str)], name: &str) -> &'a str {
+    let needle = format!("fn {name}(");
+    for (_file, src) in srcs {
+        if src.contains(&needle) {
+            return fn_src(src, name);
+        }
+    }
+    panic!("missing {name} in handler sources");
 }
 
 fn fn_src<'a>(src: &'a str, name: &str) -> &'a str {
@@ -2141,5 +2178,362 @@ async fn t30_ten_mounted_routes() {
         assert_eq!(st, StatusCode::NOT_FOUND, "getGenealogyJob {body}");
         assert_eq!(body["error"]["code"], "NOT_FOUND", "{body}");
         assert!(body.get("job").is_none(), "getGenealogyJob null job {body}");
+    }
+}
+
+const SIGNING_WRITER_ID: &str = "setOwnSigningCredential";
+
+#[test]
+fn set_signing_credential_only_in_identity_handler() {
+    let files = [
+        ("boot.rs", include_str!("../src/boot.rs")),
+        ("capabilities.rs", include_str!("../src/capabilities.rs")),
+        ("cli.rs", include_str!("../src/cli.rs")),
+        ("config.rs", include_str!("../src/config.rs")),
+        ("envelope.rs", include_str!("../src/envelope.rs")),
+        ("error.rs", include_str!("../src/error.rs")),
+        ("extract.rs", include_str!("../src/extract.rs")),
+        ("http.rs", include_str!("../src/http.rs")),
+        ("idempotency.rs", include_str!("../src/idempotency.rs")),
+        ("lib.rs", include_str!("../src/lib.rs")),
+        ("main.rs", include_str!("../src/main.rs")),
+        ("openapi.rs", include_str!("../src/openapi.rs")),
+        ("read.rs", include_str!("../src/read.rs")),
+        ("session.rs", include_str!("../src/session.rs")),
+        ("wire.rs", include_str!("../src/wire.rs")),
+        ("handlers/mod.rs", include_str!("../src/handlers/mod.rs")),
+        (
+            "handlers/customfields.rs",
+            include_str!("../src/handlers/customfields.rs"),
+        ),
+        (
+            "handlers/documents.rs",
+            include_str!("../src/handlers/documents.rs"),
+        ),
+        (
+            "handlers/print.rs",
+            include_str!("../src/handlers/print.rs"),
+        ),
+        (
+            "handlers/identity.rs",
+            include_str!("../src/handlers/identity.rs"),
+        ),
+    ];
+    let hits: Vec<&str> = files
+        .iter()
+        .filter(|(_, src)| src.contains("set_signing_credential"))
+        .map(|(name, _)| *name)
+        .collect();
+    assert_eq!(
+        hits,
+        ["handlers/identity.rs"],
+        "set_signing_credential must live only in handlers/identity.rs, got {hits:?}"
+    );
+    let identity = files
+        .iter()
+        .find(|(n, _)| *n == "handlers/identity.rs")
+        .map(|(_, s)| *s)
+        .expect("identity.rs");
+    assert!(
+        identity.contains("set_signing_credential(&mut tx, session.principal"),
+        "setOwnSigningCredential must bind session.principal"
+    );
+    assert_eq!(
+        identity.matches("set_signing_credential").count(),
+        1,
+        "exactly one call site"
+    );
+    for (name, src) in files {
+        assert!(
+            !src.contains("request_reset") && !src.contains("complete_reset"),
+            "{name} must not mount or call the reset pair"
+        );
+    }
+}
+
+fn assert_no_secret(body: &Value, secrets: &[&str]) {
+    let rendered = body.to_string();
+    for secret in secrets {
+        assert!(
+            !rendered.contains(secret),
+            "secret {secret:?} leaked in {rendered}"
+        );
+    }
+}
+
+async fn signing_snap(
+    pool: &wicket_db::Pool,
+    principal: uuid::Uuid,
+) -> Option<(String, chrono::DateTime<chrono::Utc>)> {
+    query_as("SELECT hash, established_at FROM identity.signing_credential WHERE principal_id = $1")
+        .bind(principal)
+        .fetch_optional(pool)
+        .await
+        .expect("signing_credential select")
+}
+
+async fn seed_signing(pool: &wicket_db::Pool, principal: uuid::Uuid, secret: &str) {
+    let write = WritePool::new(pool.clone());
+    let mut ctx = WriteContext::new(
+        Actor {
+            id: Identifier::from_uuid(wicket_identity::SYSTEM_ID),
+            kind: ActorKind::ServicePrincipal,
+        },
+        "server.test.seed_signing",
+        "maintenance",
+    );
+    ctx.actor_display = Some("system".into());
+    let mut tx = Tx::begin(&write, &ctx).await.expect("begin seed signing");
+    wicket_identity::set_signing_credential(
+        &mut tx,
+        wicket_identity::UserId::from_identifier(Identifier::from_uuid(principal)),
+        secret,
+    )
+    .await
+    .expect("set signing");
+    tx.commit().await.expect("commit seed signing");
+}
+
+fn unique_username(prefix: &str) -> String {
+    format!("{prefix}-{}", &uuid::Uuid::now_v7().to_string()[..8])
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn identity_surface_w3a() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    let writers: Vec<&str> = wicket_server::capabilities()
+        .filter(|c| c.id == SIGNING_WRITER_ID)
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(
+        writers,
+        [SIGNING_WRITER_ID],
+        "exactly one capability writes identity.signing_credential"
+    );
+    for profile in profiles() {
+        let mut w = common::boot(profile).await;
+        w.login_as(common::ADMIN_USER, common::ADMIN_PASSWORD).await;
+
+        let victim_user = unique_username("victim");
+        let victim_pw = "victim-login-secret";
+        let victim_sign = "victim-signing-secret";
+        let (st, created) = w
+            .post(
+                "/api/v1/identity/principals",
+                json!({
+                    "username": victim_user,
+                    "display_name": "Victim User",
+                    "password": victim_pw,
+                    "principal_kind": "User",
+                }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::CREATED, "create {created}");
+        assert_eq!(created["principal_kind"], "User", "{created}");
+        assert_eq!(created["username"], victim_user, "{created}");
+        assert_eq!(created["status"], "Active", "{created}");
+        assert_no_secret(&created, &[victim_pw, victim_sign]);
+        let victim_id = created["id"].as_str().unwrap().to_string();
+        let victim_uuid = uuid::Uuid::parse_str(&victim_id).unwrap();
+
+        let (st, got) = w
+            .get(&format!("/api/v1/identity/principals/{victim_id}"))
+            .await;
+        assert_eq!(st, StatusCode::OK, "get {got}");
+        assert_eq!(got["id"], victim_id, "{got}");
+        assert_eq!(got["principal_kind"], "User", "{got}");
+        assert_no_secret(&got, &[victim_pw, victim_sign]);
+
+        // HTTP create cannot grant identity.session (no assign_role in W3a).
+        seed_signing(&w.pool, victim_uuid, victim_sign).await;
+        let before = signing_snap(&w.pool, victim_uuid)
+            .await
+            .expect("victim signing row");
+
+        // 6.5.2: identity.session caller cannot name another principal.
+        w.login_as(common::USERNAME, common::PASSWORD).await;
+        let (st, body) = w
+            .post(
+                "/api/v1/identity/me/signing-credential",
+                json!({
+                    "secret": "attacker-signing-secret",
+                    "principal_id": victim_id,
+                }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::BAD_REQUEST, "extra principal_id {body}");
+        assert_eq!(body["error"]["code"], "VALIDATION", "{body}");
+        assert_no_secret(&body, &["attacker-signing-secret", victim_sign]);
+        let (st, body) = w
+            .post(
+                &format!("/api/v1/identity/principals/{victim_id}/signing-credential"),
+                json!({ "secret": "attacker-signing-secret" }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "unmounted path {body}");
+        let (st, body) = w
+            .post(
+                &format!("/api/v1/identity/me/signing-credential/{victim_id}"),
+                json!({ "secret": "attacker-signing-secret" }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "path id {body}");
+        assert_eq!(
+            signing_snap(&w.pool, victim_uuid).await.as_ref(),
+            Some(&before),
+            "foreign id must not rotate victim signing"
+        );
+
+        // 6.5.3 admin cannot write signing via any new administrative route.
+        w.login_as(common::ADMIN_USER, common::ADMIN_PASSWORD).await;
+        let admin_routes = [
+            (
+                "/api/v1/identity/principals".to_string(),
+                json!({
+                    "username": unique_username("other"),
+                    "display_name": "Other",
+                    "password": "other-login-secret",
+                    "id": victim_id,
+                }),
+            ),
+            (
+                "/api/v1/identity/principals".to_string(),
+                json!({
+                    "username": unique_username("other2"),
+                    "display_name": "Other 2",
+                    "password": "other-login-secret",
+                    "signing_secret": "admin-must-not-set-signing",
+                }),
+            ),
+            (
+                format!("/api/v1/identity/principals/{victim_id}/rename"),
+                json!({ "display_name": "Victim Renamed" }),
+            ),
+            (
+                format!("/api/v1/identity/principals/{victim_id}/login-credential"),
+                json!({ "password": "victim-login-reset" }),
+            ),
+        ];
+        for (uri, body) in admin_routes {
+            let (st, resp) = w.post(&uri, body).await;
+            if uri.ends_with("/rename") || uri.ends_with("/login-credential") {
+                assert_eq!(st, StatusCode::NO_CONTENT, "{uri} {resp}");
+            } else {
+                assert_eq!(st, StatusCode::BAD_REQUEST, "{uri} {resp}");
+                assert_eq!(resp["error"]["code"], "VALIDATION", "{uri} {resp}");
+            }
+            assert_no_secret(
+                &resp,
+                &[
+                    "other-login-secret",
+                    "admin-must-not-set-signing",
+                    "victim-login-reset",
+                    victim_sign,
+                ],
+            );
+        }
+        let (st, got) = w
+            .get(&format!("/api/v1/identity/principals/{victim_id}"))
+            .await;
+        assert_eq!(st, StatusCode::OK, "admin get {got}");
+        assert_eq!(got["display_name"], "Victim Renamed", "{got}");
+        assert_no_secret(&got, &[victim_sign, "victim-login-reset"]);
+        let (st, deact) = w
+            .post(
+                &format!("/api/v1/identity/principals/{victim_id}/deactivate"),
+                json!({}),
+            )
+            .await;
+        assert_eq!(st, StatusCode::NO_CONTENT, "deactivate {deact}");
+        assert_eq!(
+            signing_snap(&w.pool, victim_uuid).await.as_ref(),
+            Some(&before),
+            "admin routes must not write identity.signing_credential"
+        );
+        let (st, got) = w
+            .get(&format!("/api/v1/identity/principals/{victim_id}"))
+            .await;
+        assert_eq!(st, StatusCode::OK, "{got}");
+        assert_eq!(got["status"], "Inactive", "{got}");
+
+        // 6.5.4 session without identity.manage is refused on every admin route.
+        w.login_as(common::USERNAME, common::PASSWORD).await;
+        let (st, me) = w.get("/api/v1/identity/me").await;
+        assert_eq!(st, StatusCode::OK, "own profile {me}");
+        assert_eq!(me["principal_kind"], "User", "{me}");
+        assert_eq!(me["username"], common::USERNAME, "{me}");
+        assert_no_secret(&me, &[common::PASSWORD, common::SIGNING_SECRET]);
+        let operator_id = me["id"].as_str().unwrap().to_string();
+        let operator_uuid = uuid::Uuid::parse_str(&operator_id).unwrap();
+        let op_before = signing_snap(&w.pool, operator_uuid)
+            .await
+            .expect("operator signing");
+
+        let forbidden = [
+            (
+                "/api/v1/identity/principals".to_string(),
+                json!({
+                    "username": unique_username("nope"),
+                    "display_name": "Nope",
+                    "password": "nope-login-secret",
+                }),
+            ),
+            (
+                format!("/api/v1/identity/principals/{victim_id}/rename"),
+                json!({ "display_name": "Should Not" }),
+            ),
+            (
+                format!("/api/v1/identity/principals/{victim_id}/deactivate"),
+                json!({}),
+            ),
+            (
+                format!("/api/v1/identity/principals/{victim_id}/login-credential"),
+                json!({ "password": "should-not-reset" }),
+            ),
+        ];
+        for (uri, body) in forbidden {
+            let (st, resp) = w.post(&uri, body).await;
+            assert_eq!(st, StatusCode::FORBIDDEN, "{uri} {resp}");
+            assert_eq!(resp["error"]["code"], "FORBIDDEN", "{uri} {resp}");
+        }
+        let (st, resp) = w
+            .get(&format!("/api/v1/identity/principals/{victim_id}"))
+            .await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "get principal {resp}");
+        assert_eq!(resp["error"]["code"], "FORBIDDEN", "{resp}");
+
+        let new_login = "reyes-login-rotated";
+        let (st, resp) = w
+            .post(
+                "/api/v1/identity/me/login-credential",
+                json!({ "password": new_login }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::NO_CONTENT, "change own login {resp}");
+        assert_no_secret(&resp, &[new_login, common::PASSWORD]);
+        let new_sign = "reyes-signing-rotated";
+        let (st, resp) = w
+            .post(
+                "/api/v1/identity/me/signing-credential",
+                json!({ "secret": new_sign }),
+            )
+            .await;
+        assert_eq!(st, StatusCode::NO_CONTENT, "rotate own signing {resp}");
+        assert_no_secret(&resp, &[new_sign, common::SIGNING_SECRET]);
+        let op_after = signing_snap(&w.pool, operator_uuid)
+            .await
+            .expect("operator signing after");
+        assert_ne!(op_after.0, op_before.0, "own signing hash must rotate");
+        assert_ne!(
+            op_after.1, op_before.1,
+            "own signing established_at must rotate"
+        );
+
+        w.login_as(common::USERNAME, new_login).await;
+        let (st, me) = w.get("/api/v1/identity/me").await;
+        assert_eq!(st, StatusCode::OK, "relogin {me}");
+        assert_eq!(me["id"], operator_id, "{me}");
     }
 }

@@ -49,6 +49,7 @@ pub const KNOWN_PERMISSIONS: &[&str] = &[
     "print.render",
     "print.archive",
     "print.templates",
+    "identity.manage",
 ];
 
 /// Authenticated HTTP session copied from `wicket-identity::login` into

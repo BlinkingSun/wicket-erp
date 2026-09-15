@@ -36,6 +36,8 @@ pub const USERNAME: &str = "mreyes";
 pub const SIGNING_SECRET: &str = "signing-secret-ok";
 pub const NOPERM_USER: &str = "noperm";
 pub const NOPERM_PASSWORD: &str = "noperm-login";
+pub const ADMIN_USER: &str = "idadmin";
+pub const ADMIN_PASSWORD: &str = "idadmin-login";
 
 /// Per-test filesystem blob root. Removed on drop.
 pub struct BlobRoot {
@@ -238,6 +240,24 @@ async fn seed_operator(pool: &wicket_db::Pool, profile: &Profile) {
     assign_role(&mut tx, noperm.id, viewer[0])
         .await
         .expect("assign noperm");
+    let admin = create_principal(&mut tx, PrincipalKind::User, ADMIN_USER, "Identity Admin")
+        .await
+        .expect("admin principal");
+    set_login_credential(&mut tx, admin.id, ADMIN_PASSWORD)
+        .await
+        .expect("admin password");
+    let admin_role = seed_bundles(
+        &mut tx,
+        &[RoleBundle {
+            name: "slice-identity-admin".into(),
+            permissions: vec!["identity.manage".into(), "identity.session".into()],
+        }],
+    )
+    .await
+    .expect("admin role");
+    assign_role(&mut tx, admin.id, admin_role[0])
+        .await
+        .expect("assign admin");
     tx.commit().await.expect("commit seed");
 }
 

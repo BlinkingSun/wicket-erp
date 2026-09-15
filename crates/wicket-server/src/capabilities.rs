@@ -124,6 +124,70 @@ pub const KERNEL: &[Capability] = &[
         None,
     ),
     kernel(
+        "createPrincipal",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/principals",
+        "identity.manage",
+        None,
+    ),
+    kernel(
+        "getPrincipal",
+        CapabilityKind::Http,
+        "GET",
+        "/api/v1/identity/principals/{id}",
+        "identity.manage",
+        None,
+    ),
+    kernel(
+        "renamePrincipal",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/principals/{id}/rename",
+        "identity.manage",
+        None,
+    ),
+    kernel(
+        "deactivatePrincipal",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/principals/{id}/deactivate",
+        "identity.manage",
+        None,
+    ),
+    kernel(
+        "resetLoginCredential",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/principals/{id}/login-credential",
+        "identity.manage",
+        None,
+    ),
+    kernel(
+        "getOwnProfile",
+        CapabilityKind::Http,
+        "GET",
+        "/api/v1/identity/me",
+        "identity.session",
+        None,
+    ),
+    kernel(
+        "changeOwnLoginCredential",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/me/login-credential",
+        "identity.session",
+        None,
+    ),
+    kernel(
+        "setOwnSigningCredential",
+        CapabilityKind::Http,
+        "POST",
+        "/api/v1/identity/me/signing-credential",
+        "identity.session",
+        None,
+    ),
+    kernel(
         "approveCalibration",
         CapabilityKind::Transition,
         "POST",
@@ -623,7 +687,7 @@ mod tests {
     fn table_has_the_mounted_count() {
         assert_eq!(
             KERNEL.len() + MODULE.len(),
-            57,
+            65,
             "keep in lockstep with the live mount set"
         );
     }

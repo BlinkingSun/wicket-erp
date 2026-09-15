@@ -3004,4 +3004,5 @@ pub async fn health() -> &'static str {
 
 pub mod customfields;
 pub mod documents;
+pub mod identity;
 pub mod print;

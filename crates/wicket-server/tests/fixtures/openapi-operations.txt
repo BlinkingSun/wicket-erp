@@ -7,6 +7,8 @@ GET /api/v1/esign/signatures/{id}/bundle
 GET /api/v1/genealogy/impact/{lot}
 GET /api/v1/genealogy/jobs/{id}
 GET /api/v1/genealogy/trace
+GET /api/v1/identity/me
+GET /api/v1/identity/principals/{id}
 GET /api/v1/inventory/on-hand
 GET /api/v1/iq/manifest
 GET /api/v1/items
@@ -37,6 +39,12 @@ POST /api/v1/esign/challenges
 POST /api/v1/esign/signatures
 POST /api/v1/identity/login
 POST /api/v1/identity/logout
+POST /api/v1/identity/me/login-credential
+POST /api/v1/identity/me/signing-credential
+POST /api/v1/identity/principals
+POST /api/v1/identity/principals/{id}/deactivate
+POST /api/v1/identity/principals/{id}/login-credential
+POST /api/v1/identity/principals/{id}/rename
 POST /api/v1/inventory/counts
 POST /api/v1/inventory/receipts
 POST /api/v1/inventory/releases
