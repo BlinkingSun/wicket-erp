@@ -20,9 +20,11 @@ function renderAt(path: string) {
 }
 
 describe("mode route trees", () => {
-  it("reaches the office empty shell", async () => {
+  it("reaches the office shell with module navigation", async () => {
     renderAt("/office");
-    expect(await screen.findByText(/Office mode has no screens in this wave/)).toBeInTheDocument();
+    expect(await screen.findByRole("navigation", { name: "Office modules" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Items" })).toBeInTheDocument();
+    expect(screen.getByText(/Open an item from the API/)).toBeInTheDocument();
   });
 
   it("reaches the shop-floor empty shell", async () => {

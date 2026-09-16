@@ -5,6 +5,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { GenealogyScreen } from "./features/genealogy/GenealogyScreen";
+import { ItemMasterScreen } from "./features/items/ItemMasterScreen";
 import { FloorHome, FloorLayout } from "./modes/floor-layout";
 import { OfficeHome, OfficeLayout } from "./modes/office-layout";
 import { QualityLayout } from "./modes/quality-layout";
@@ -32,6 +33,26 @@ const officeIndexRoute = createRoute({
   getParentRoute: () => officeRoute,
   path: "/",
   component: OfficeHome,
+});
+
+const officeItemsRoute = createRoute({
+  getParentRoute: () => officeRoute,
+  path: "items",
+});
+
+const officeItemsIndexRoute = createRoute({
+  getParentRoute: () => officeItemsRoute,
+  path: "/",
+  component: OfficeHome,
+});
+
+const officeItemMasterRoute = createRoute({
+  getParentRoute: () => officeItemsRoute,
+  path: "$itemId",
+  component: function ItemMasterRoute() {
+    const { itemId } = officeItemMasterRoute.useParams();
+    return <ItemMasterScreen itemId={itemId} />;
+  },
 });
 
 const floorRoute = createRoute({
@@ -91,7 +112,10 @@ const genealogyRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
-  officeRoute.addChildren([officeIndexRoute]),
+  officeRoute.addChildren([
+    officeIndexRoute,
+    officeItemsRoute.addChildren([officeItemsIndexRoute, officeItemMasterRoute]),
+  ]),
   floorRoute.addChildren([floorIndexRoute]),
   qualityRoute.addChildren([qualityIndexRoute, genealogyRoute]),
 ]);
