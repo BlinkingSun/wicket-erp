@@ -1,0 +1,38 @@
+/* Semantic roles from DESIGN.md §3. Values for this screen from §10.3. */
+
+:root {
+  color-scheme: dark;
+
+  --surface-base: #1e1f21;
+  --surface-raised: #292e32;
+  --surface-header: #22252a;
+  --surface-overlay: #212429;
+
+  --border-subtle: #32363b;
+  --border-strong: #9a8670;
+
+  --text-primary: #ffffff;
+  --text-secondary: #b4b6b8;
+  --text-disabled: #6e7174;
+
+  --accent: #9a8670;
+
+  --status-ok: #9a8670;
+  --status-warn: #c4a35a;
+  --status-danger: #c45c5c;
+  --status-info: #8a9aab;
+
+  --space: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --duration: 160ms;
+  --easing: cubic-bezier(0.2, 0, 0, 1);
+
+  --radius-card: 8px;
+  --radius-pill: 999px;
+}

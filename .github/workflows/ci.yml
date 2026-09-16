@@ -106,3 +106,17 @@ jobs:
 
       - name: Module manifest identity
         run: bash scripts/lint-module-manifests.sh
+
+  ui-check:
+    name: ui-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/wicket-web/package-lock.json
+      - uses: extractions/setup-just@v2
+      - name: just ui-install && just ui-lint && just ui-build && just ui-test
+        run: just ui-install && just ui-lint && just ui-build && just ui-test

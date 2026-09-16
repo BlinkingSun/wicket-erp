@@ -420,3 +420,18 @@ ci: fmt-check clippy lint-sql lint-mounts lint-module-manifests lint-openapi-fix
 # integration tests under crates/*/tests/, including Wave 2s slice acceptance,
 # because `test-lib` passes `--lib`.
 ci-db: ci test-db
+
+# First-party web interface (apps/wicket-web). Not part of `ci` / `ci-db`.
+# A contributor with no Node installed must still be able to run `just ci`.
+ui-install:
+    npm ci --prefix "{{root}}/apps/wicket-web"
+
+ui-lint:
+    npm run lint --prefix "{{root}}/apps/wicket-web"
+    npm run typecheck --prefix "{{root}}/apps/wicket-web"
+
+ui-build:
+    npm run build --prefix "{{root}}/apps/wicket-web"
+
+ui-test:
+    npm run test --prefix "{{root}}/apps/wicket-web"

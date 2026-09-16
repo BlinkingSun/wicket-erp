@@ -1,0 +1,41 @@
+{
+  "root": {
+    "lot_id": "01932c5a-8b10-7001-8000-000000000003",
+    "identifier": "HT-ATI-24-8831",
+    "item_id": "01932c5a-8b10-7001-8000-000000000002"
+  },
+  "nodes": [
+    {
+      "lot_id": "01932c5a-8b10-7001-8000-000000000003",
+      "identifier": "HT-ATI-24-8831",
+      "quantity": { "amount": "240.00000000", "unit": 3, "dimension": "Mass" }
+    },
+    {
+      "lot_id": "01932c5a-8b10-7001-8000-000000000004",
+      "identifier": "LOT-BAR-24-4412",
+      "quantity": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" }
+    },
+    {
+      "lot_id": "01932c5a-8b10-7001-8000-000000000005",
+      "identifier": "LOT-WO-1847",
+      "item_id": "01932c5a-8b10-7001-8000-000000000001",
+      "quantity": { "amount": "500.00000000", "unit": 1, "dimension": "Count" },
+      "serials": ["SN-450-000134"]
+    }
+  ],
+  "edges": [
+    {
+      "from_lot_id": "01932c5a-8b10-7001-8000-000000000003",
+      "to_lot_id": "01932c5a-8b10-7001-8000-000000000004",
+      "kind": "split"
+    },
+    {
+      "from_lot_id": "01932c5a-8b10-7001-8000-000000000004",
+      "to_lot_id": "01932c5a-8b10-7001-8000-000000000005",
+      "kind": "transformation",
+      "work_order": "WO-2026-1847",
+      "quantity_in": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" },
+      "quantity_out": { "amount": "500.00000000", "unit": 1, "dimension": "Count" }
+    }
+  ]
+}

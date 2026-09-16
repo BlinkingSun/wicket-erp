@@ -56,6 +56,17 @@ Rust **1.98.1** is pinned in `rust-toolchain.toml` (`PLAN.md` §11). PostgreSQL 
 
 Machines with a container runtime can bring up Postgres from `dev/compose.yml` (image `postgres:17`). Machines without one use the OS-managed server on `127.0.0.1:5432`. Wicket never installs that server. Run `just db-gc` to drop orphaned `wicket_t_*` test databases left behind by killed test runs (default age threshold 60 minutes, override with `WICKET_DB_GC_MIN`).
 
+The first-party interface lives in `apps/wicket-web/`. It is a TypeScript application, not a Cargo workspace member, and it is not on the `ci` or `ci-db` recipes. Node 22 or newer is required for UI work only.
+
+```
+just ui-install
+just ui-lint
+just ui-build
+just ui-test
+```
+
+`just ui-install` then `npm run dev --prefix apps/wicket-web` starts the Vite dev server. The genealogy screen is at `/quality/genealogy`. It queries `traceGenealogy` with a lot UUID; human-identifier lookup is ABSENT. Hosted CI gates the UI with the `ui-check` job, which does not need Postgres.
+
 ## 6. License
 
 Wicket is licensed under the GNU Affero General Public License v3.0 or later; see LICENSE. Contributions are accepted under the Developer Certificate of Origin; see CONTRIBUTING.md. Reasoning: [docs/adr/0006-license.md](docs/adr/0006-license.md).
