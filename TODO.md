@@ -109,8 +109,29 @@ the wire. None of it is new functionality.
 
 **Human-identifier lookup.** Item number, work-order number, lot identifier and serial
 identifier resolved to ids. `design/mockup-shop-floor.png` has a scan box; an operator scans a
-part number, not a UUID. No Stage 2 item delivers this. Sized as one small operation family.
-Evidence: `_team/reports/spike-ui-gap.md`.
+part number, not a UUID. No Stage 2 item delivers this.
+
+Scoped 2026-09-15. **Shape: per-entity `GET /api/v1/{collection}/by-number/{n}`**, not a root
+`/api/v1/resolve`. `docs/10:21` lets a module register only under its own prefix, so a
+polymorphic resolver would have to be a kernel/composition-root operation fanning into four
+module crates — and worse, the schema does not make a scanned string unique across kinds, and
+**serials are not unique even within kind**, so a `{kind, id}` response would be a lie without an
+owner-defined collision policy. Per-entity routes sidestep that entirely.
+
+**Mixed cost, not one job.** `lots` already has a resolver, exported and unmounted — mounting it
+is one `[[routes]]` row, one capability, one handler: hours. `items`, work orders and serials
+need new crate functions. `location_id_by_code` / `site_id_by_code` are likewise crate-ready and
+unmounted (shop-floor chrome shows `WC-LATHE-03`). Not kernel-crate work either way.
+
+**Blocking permission gap, and it is a profile edit rather than a new key.** The seeded
+`operator` bundle in **both** profiles has `items.view`, `production.view` and `genealogy.view`
+but **not `lots.view`** (`profiles/plain-shop.toml:109-127`,
+`profiles/regulated-device.toml:121-135`; the admin bundle has the same hole). Once by-number is
+mounted, a seeded operator resolves a traveler number and an item number and then **403s on lot
+and serial lookup — which is exactly the genealogy mockup's search box**. Granting `lots.view`
+to `operator` is an owner decision about the permission model, not something a lane may do.
+
+Evidence: `_team/reports/spike-ui-gap.md`, `_team/reports/spike-identifier-lookup.md`.
 
 **`traceGenealogy` origin widening.** The mounted operation is narrower than the crate's real
 origins (`serial` / `lot` / `posting`). A handler gap, hours not a module, and genealogy is the
