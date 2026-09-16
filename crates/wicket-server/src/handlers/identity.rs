@@ -6,7 +6,7 @@
 //! bound to `session.principal` only.
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use schemars::JsonSchema;
@@ -14,11 +14,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wicket_core::Identifier;
 use wicket_db::Tx;
-use wicket_identity::{Principal, PrincipalKind, PrincipalStatus, UserId};
+use wicket_identity::{Principal, PrincipalKind, PrincipalStatus, Role, UserId};
 
-use super::{H, json_status, parse_json, rid};
+use super::{H, json_status, nonempty, parse_json, parse_limit, rid};
 use crate::boot::AppState;
-use crate::envelope::error_response;
+use crate::envelope::{ListBody, error_response};
 use crate::error::{Error, Result};
 use crate::extract;
 use crate::idempotency;
@@ -35,6 +35,9 @@ fn map_identity(e: wicket_identity::Error) -> Error {
     match e {
         wicket_identity::Error::UsernameReused => {
             Error::conflict("username is never reused", Some("username"))
+        }
+        wicket_identity::Error::InvalidLimit => {
+            Error::validation("limit must be between 1 and 200", Some("limit"))
         }
         other => other.into(),
     }
@@ -64,8 +67,8 @@ pub struct PrincipalBody {
     deactivated_at: Option<String>,
 }
 
-fn principal_body(p: &Principal) -> Value {
-    serde_json::to_value(&PrincipalBody {
+fn principal_wire(p: &Principal) -> PrincipalBody {
+    PrincipalBody {
         id: p.id.as_uuid().to_string(),
         principal_kind: match p.principal_kind {
             PrincipalKind::User => "User".to_owned(),
@@ -84,8 +87,27 @@ fn principal_body(p: &Principal) -> Value {
         deactivated_at: p
             .deactivated_at
             .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
-    })
-    .expect("PrincipalBody")
+    }
+}
+
+fn principal_body(p: &Principal) -> Value {
+    serde_json::to_value(&principal_wire(p)).expect("PrincipalBody")
+}
+
+/// GET `/api/v1/identity/roles` (and role read) body.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct RoleBody {
+    id: String,
+    name: String,
+    permissions: Vec<String>,
+}
+
+fn role_wire(r: &Role) -> RoleBody {
+    RoleBody {
+        id: r.id.as_uuid().to_string(),
+        name: r.name.clone(),
+        permissions: r.permissions.clone(),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -475,4 +497,244 @@ async fn set_own_signing_credential_inner(
     idempotency::remember(&mut tx, key, &hash, 204, &empty).await?;
     tx.commit().await?;
     Ok(204)
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct PrincipalListQ {
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+/// GET /api/v1/identity/principals
+pub async fn list_principals(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<PrincipalListQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match list_principals_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn list_principals_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: PrincipalListQ,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "identity.manage").await?;
+    let limit = parse_limit(nonempty(&q.limit))?.map(i64::from);
+    let cursor = nonempty(&q.cursor);
+    if let Some(c) = cursor {
+        let _ = parse_uuid(c, "cursor", Identifier::from_uuid)?;
+    }
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "identity.manage",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let page = wicket_identity::list_principals(&mut tx, limit, cursor, None, None).await;
+    tx.rollback().await?;
+    let page = page.map_err(map_identity)?;
+    Ok(serde_json::to_value(&ListBody {
+        data: page.data.iter().map(principal_wire).collect::<Vec<_>>(),
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+    })?)
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct UsernameQ {
+    #[serde(default)]
+    username: Option<String>,
+}
+
+/// GET /api/v1/identity/principals/by-username
+pub async fn get_principal_by_username(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<UsernameQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match get_principal_by_username_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn get_principal_by_username_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: UsernameQ,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "identity.manage").await?;
+    let username = nonempty(&q.username)
+        .ok_or_else(|| Error::validation("username is required", Some("username")))?;
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "identity.manage",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let principal = wicket_identity::load_principal_by_username(&mut tx, username).await;
+    tx.rollback().await?;
+    Ok(principal_body(&principal.map_err(map_identity)?))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct RoleListQ {
+    #[serde(default)]
+    limit: Option<String>,
+    #[serde(default)]
+    cursor: Option<String>,
+}
+
+/// GET /api/v1/identity/roles
+pub async fn list_roles(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<RoleListQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match list_roles_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn list_roles_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: RoleListQ,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "identity.manage").await?;
+    let limit = parse_limit(nonempty(&q.limit))?.map(i64::from);
+    let cursor = nonempty(&q.cursor);
+    if let Some(c) = cursor {
+        let _ = parse_uuid(c, "cursor", Identifier::from_uuid)?;
+    }
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "identity.manage",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let page = wicket_identity::list_roles(&mut tx, limit, cursor).await;
+    tx.rollback().await?;
+    let page = page.map_err(map_identity)?;
+    Ok(serde_json::to_value(&ListBody {
+        data: page.data.iter().map(role_wire).collect::<Vec<_>>(),
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+    })?)
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct RoleNameQ {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// GET /api/v1/identity/roles/by-name
+pub async fn get_role_by_name(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<RoleNameQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match get_role_by_name_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn get_role_by_name_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: RoleNameQ,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "identity.manage").await?;
+    let name =
+        nonempty(&q.name).ok_or_else(|| Error::validation("name is required", Some("name")))?;
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "identity.manage",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let role = wicket_identity::load_role_by_name(&mut tx, name).await;
+    tx.rollback().await?;
+    Ok(serde_json::to_value(&role_wire(
+        &role.map_err(map_identity)?,
+    ))?)
+}
+
+/// GET /api/v1/identity/principals/{id}/roles
+pub async fn list_roles_for_principal(
+    State(state): State<AppState>,
+    headers: H,
+    Path(id): Path<String>,
+) -> Response {
+    let request_id = rid(&headers);
+    match list_roles_for_principal_inner(&state, &headers, &request_id, &id).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn list_roles_for_principal_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    id: &str,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "identity.manage").await?;
+    let id = parse_uuid(id, "id", user_id)?;
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "identity.manage",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let roles = wicket_identity::list_roles_for_principal(&mut tx, id).await;
+    tx.rollback().await?;
+    let roles = roles.map_err(map_identity)?;
+    Ok(serde_json::to_value(&ListBody {
+        data: roles.iter().map(role_wire).collect::<Vec<_>>(),
+        next_cursor: None,
+        has_more: false,
+    })?)
 }

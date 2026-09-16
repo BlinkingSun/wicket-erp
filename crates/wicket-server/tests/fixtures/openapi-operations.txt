@@ -8,10 +8,16 @@ GET /api/v1/genealogy/impact/{lot}
 GET /api/v1/genealogy/jobs/{id}
 GET /api/v1/genealogy/trace
 GET /api/v1/identity/me
+GET /api/v1/identity/principals
+GET /api/v1/identity/principals/by-username
 GET /api/v1/identity/principals/{id}
+GET /api/v1/identity/principals/{id}/roles
+GET /api/v1/identity/roles
+GET /api/v1/identity/roles/by-name
 GET /api/v1/inventory/on-hand
 GET /api/v1/iq/manifest
 GET /api/v1/items
+GET /api/v1/items/resolve
 GET /api/v1/items/{id}
 GET /api/v1/items/{id}/custom-fields
 GET /api/v1/locations
@@ -25,6 +31,7 @@ GET /api/v1/navigation
 GET /api/v1/openapi.json
 GET /api/v1/print/templates
 GET /api/v1/work-orders
+GET /api/v1/work-orders/resolve
 GET /api/v1/work-orders/{id}
 GET /health
 PATCH /api/v1/items/{id}

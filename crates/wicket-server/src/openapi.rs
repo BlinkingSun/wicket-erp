@@ -22,7 +22,8 @@ use crate::boot::AppState;
 use crate::capabilities::{self, Capability};
 use crate::envelope::ListBody;
 use crate::handlers::{
-    ItemPatch, LoginBody, LoginResponse, NavigationBody, OnHandBody, identity::PrincipalBody,
+    ItemPatch, LoginBody, LoginResponse, NavigationBody, OnHandBody, ResolveIdBody,
+    identity::{PrincipalBody, RoleBody},
 };
 use crate::wire::MoneyBody;
 
@@ -43,6 +44,13 @@ const SCHEMA_CAPABILITIES: &[&str] = &[
     "login",
     "getNavigation",
     "getOwnProfile",
+    "listPrincipals",
+    "getPrincipalByUsername",
+    "listRoles",
+    "getRoleByName",
+    "listRolesForPrincipal",
+    "resolveItemByNumber",
+    "resolveWorkOrderByNumber",
 ];
 
 struct SchemaBinding {
@@ -217,6 +225,30 @@ fn schema_binding(id: &str) -> Option<SchemaBinding> {
             request: None,
             response: schema_ref::<PrincipalBody>(),
         }),
+        "listPrincipals" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<ListBody<PrincipalBody>>(),
+        }),
+        "getPrincipalByUsername" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<PrincipalBody>(),
+        }),
+        "listRoles" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<ListBody<RoleBody>>(),
+        }),
+        "getRoleByName" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<RoleBody>(),
+        }),
+        "listRolesForPrincipal" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<ListBody<RoleBody>>(),
+        }),
+        "resolveItemByNumber" | "resolveWorkOrderByNumber" => Some(SchemaBinding {
+            request: None,
+            response: schema_ref::<ResolveIdBody>(),
+        }),
         _ => None,
     }
 }
@@ -258,6 +290,10 @@ fn component_schemas() -> serde_json::Map<String, Value> {
     merge_type::<LoginResponse>(&mut schemas);
     merge_type::<NavigationBody>(&mut schemas);
     merge_type::<PrincipalBody>(&mut schemas);
+    merge_type::<ListBody<PrincipalBody>>(&mut schemas);
+    merge_type::<RoleBody>(&mut schemas);
+    merge_type::<ListBody<RoleBody>>(&mut schemas);
+    merge_type::<ResolveIdBody>(&mut schemas);
     merge_type::<MoneyBody>(&mut schemas);
     merge_type::<wicket_core::AnyQuantity>(&mut schemas);
     merge_type::<wicket_core::MoneyWire>(&mut schemas);
@@ -421,6 +457,15 @@ fn query_parameters(id: &str) -> Vec<Value> {
             ),
         ],
         "listCustomFieldDefinitions" => vec![query_param("entity", true, string_schema())],
+        "listPrincipals" | "listRoles" => vec![
+            query_param("limit", false, limit_schema()),
+            query_param("cursor", false, string_schema()),
+        ],
+        "getPrincipalByUsername" => vec![query_param("username", true, string_schema())],
+        "getRoleByName" => vec![query_param("name", true, string_schema())],
+        "resolveItemByNumber" | "resolveWorkOrderByNumber" => {
+            vec![query_param("number", true, string_schema())]
+        }
         _ => Vec::new(),
     }
 }
@@ -536,8 +581,8 @@ mod tests {
         }
         assert_eq!(
             SCHEMA_CAPABILITIES.len(),
-            12,
-            "Wave 1 in-scope set is the twelve named in SPEC §1"
+            19,
+            "Wave 1 twelve plus the seven mount-wave-1 operations"
         );
     }
 }

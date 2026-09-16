@@ -1735,13 +1735,19 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
             &[("from_lot_id", true), ("direction", false)],
         ),
         ("listCustomFieldDefinitions", &[("entity", true)]),
+        ("listPrincipals", &[("limit", false), ("cursor", false)]),
+        ("listRoles", &[("limit", false), ("cursor", false)]),
+        ("getPrincipalByUsername", &[("username", true)]),
+        ("getRoleByName", &[("name", true)]),
+        ("resolveItemByNumber", &[("number", true)]),
+        ("resolveWorkOrderByNumber", &[("number", true)]),
     ];
     for profile in profiles() {
         let w = common::boot(profile).await;
         let (st, doc) = w.get("/api/v1/openapi.json").await;
         assert_eq!(st, StatusCode::OK, "{doc}");
         let listed = registered_operations(&doc);
-        assert_eq!(listed.len(), 65, "operation set must stay at 65");
+        assert_eq!(listed.len(), 72, "operation set must stay at 72");
 
         let mut path_rows = 0usize;
         let mut signed = 0usize;
@@ -1843,7 +1849,7 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
                 );
             }
         }
-        assert_eq!(path_rows, 31, "31 capability rows carry a path placeholder");
+        assert_eq!(path_rows, 32, "32 capability rows carry a path placeholder");
 
         for (op_id, fields) in query_fields {
             let cap = capabilities()
@@ -1917,8 +1923,9 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
     }
 }
 
-/// T-35 Wave 1: the twelve mockup-pressed operations carry request/response
-/// schemas on the *served* document (SPEC §4.3). The table-walk is a twin of
+/// T-35 Wave 1 plus mount-wave-1: the mockup-pressed twelve and the seven
+/// identity/resolve operations carry request/response schemas on the *served*
+/// document (SPEC §4.3). The table-walk is a twin of
 /// `every_capability_has_a_handler`; this test is the contract a generated
 /// client would read.
 #[tokio::test(flavor = "multi_thread")]
@@ -1939,6 +1946,13 @@ async fn served_openapi_carries_wave1_body_schemas() {
         "login",
         "getNavigation",
         "getOwnProfile",
+        "listPrincipals",
+        "getPrincipalByUsername",
+        "listRoles",
+        "getRoleByName",
+        "listRolesForPrincipal",
+        "resolveItemByNumber",
+        "resolveWorkOrderByNumber",
     ];
     const WAVE1_REQUEST: &[&str] = &["updateItem", "login"];
     for profile in profiles() {
@@ -1946,7 +1960,7 @@ async fn served_openapi_carries_wave1_body_schemas() {
         let (st, doc) = w.get("/api/v1/openapi.json").await;
         assert_eq!(st, StatusCode::OK, "{doc}");
         let listed = registered_operations(&doc);
-        assert_eq!(listed.len(), 65, "operation set must stay at 65");
+        assert_eq!(listed.len(), 72, "operation set must stay at 72");
 
         for id in WAVE1 {
             let cap = capabilities()
@@ -2102,6 +2116,20 @@ async fn get_handlers_are_read_only() {
         "get_principal_inner",
         "get_own_profile",
         "get_own_profile_inner",
+        "list_principals",
+        "list_principals_inner",
+        "get_principal_by_username",
+        "get_principal_by_username_inner",
+        "list_roles",
+        "list_roles_inner",
+        "get_role_by_name",
+        "get_role_by_name_inner",
+        "list_roles_for_principal",
+        "list_roles_for_principal_inner",
+        "resolve_item",
+        "resolve_item_inner",
+        "resolve_work_order",
+        "resolve_work_order_inner",
     ];
     const HANDLER_SRCS: &[(&str, &str)] = &[
         ("mod.rs", include_str!("../src/handlers/mod.rs")),
@@ -2176,6 +2204,13 @@ async fn get_handlers_are_read_only() {
             "/api/v1/print/templates".into(),
             "/api/v1/identity/me".into(),
             format!("/api/v1/identity/principals/{}", uuid::Uuid::nil()),
+            "/api/v1/identity/principals".into(),
+            "/api/v1/identity/principals/by-username?username=mreyes".into(),
+            "/api/v1/identity/roles".into(),
+            "/api/v1/identity/roles/by-name?name=slice-operator".into(),
+            format!("/api/v1/identity/principals/{}/roles", uuid::Uuid::nil()),
+            "/api/v1/items/resolve?number=RO-1".into(),
+            "/api/v1/work-orders/resolve?number=WO-NOPE".into(),
         ];
         for uri in &gets {
             let (st, body) = w.get(uri).await;

@@ -191,6 +191,12 @@ pub struct OnHandBody {
     available: String,
 }
 
+/// GET `/api/v1/items/resolve` and `/api/v1/work-orders/resolve` body.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ResolveIdBody {
+    id: String,
+}
+
 async fn login_inner(
     state: &AppState,
     headers: &H,
@@ -576,6 +582,50 @@ async fn list_items_inner(
         next_cursor: page.next_cursor,
         has_more: page.has_more,
     })?)
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ResolveNumberQ {
+    #[serde(default)]
+    number: Option<String>,
+}
+
+/// GET /api/v1/items/resolve
+pub async fn resolve_item(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<ResolveNumberQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match resolve_item_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn resolve_item_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: ResolveNumberQ,
+) -> Result<Value> {
+    let session = extract::require_permission(state, headers, request_id, "items.view").await?;
+    let number = nonempty(&q.number)
+        .ok_or_else(|| Error::validation("number is required", Some("number")))?;
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "items.view",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let id = wicket_mod_items::resolve(&mut tx, number).await;
+    tx.rollback().await?;
+    let id = id.map_err(map_items_err)?;
+    Ok(serde_json::to_value(&ResolveIdBody { id: id.to_string() })?)
 }
 
 /// PATCH `/api/v1/items/{id}` body.
@@ -2078,6 +2128,45 @@ async fn list_work_orders_inner(
         "next_cursor": page.next_cursor,
         "has_more": page.has_more,
     }))
+}
+
+/// GET /api/v1/work-orders/resolve
+pub async fn resolve_work_order(
+    State(state): State<AppState>,
+    headers: H,
+    Query(q): Query<ResolveNumberQ>,
+) -> Response {
+    let request_id = rid(&headers);
+    match resolve_work_order_inner(&state, &headers, &request_id, q).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => error_response(e, &request_id),
+    }
+}
+
+async fn resolve_work_order_inner(
+    state: &AppState,
+    headers: &H,
+    request_id: &str,
+    q: ResolveNumberQ,
+) -> Result<Value> {
+    let session =
+        extract::require_permission(state, headers, request_id, "production.view").await?;
+    let number = nonempty(&q.number)
+        .ok_or_else(|| Error::validation("number is required", Some("number")))?;
+    let write = crate::read::pool(state);
+    let mut tx = crate::read::begin(
+        &write,
+        &session,
+        "production.view",
+        request_id,
+        headers,
+        &state.kernel().profile.spec_version,
+    )
+    .await?;
+    let id = wicket_mod_production_min::resolve(&mut tx, number).await;
+    tx.rollback().await?;
+    let id = id.map_err(map_production_err)?;
+    Ok(serde_json::to_value(&ResolveIdBody { id: id.to_string() })?)
 }
 
 /// POST .../release

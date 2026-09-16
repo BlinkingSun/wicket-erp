@@ -187,6 +187,7 @@ impl Error {
             ),
             Self::Identity(wicket_identity::Error::NotFound)
             | Self::Items(wicket_mod_items::Error::NotFound(_))
+            | Self::Items(wicket_mod_items::Error::UnknownNumber(_))
             | Self::Locations(wicket_mod_locations::Error::NotFound(_))
             | Self::Lots(wicket_mod_lots::Error::NotFound)
             | Self::Inventory(wicket_mod_inventory::Error::NotFound)
@@ -194,6 +195,15 @@ impl Error {
             | Self::Genealogy(wicket_mod_genealogy::Error::NotFound) => {
                 ("NOT_FOUND", StatusCode::NOT_FOUND, None, self.to_string())
             }
+            Self::Identity(wicket_identity::Error::InvalidLimit)
+            | Self::Items(wicket_mod_items::Error::InvalidLimit)
+            | Self::Lots(wicket_mod_lots::Error::InvalidLimit)
+            | Self::Production(wicket_mod_production_min::Error::InvalidLimit) => (
+                "VALIDATION",
+                StatusCode::BAD_REQUEST,
+                Some("limit"),
+                self.to_string(),
+            ),
             Self::Lots(wicket_mod_lots::Error::InvalidIdentifier(_)) => (
                 "VALIDATION",
                 StatusCode::BAD_REQUEST,
@@ -323,5 +333,47 @@ impl From<wicket_esign::Error> for Error {
             wicket_esign::Error::Core(e) => Self::Core(e),
             other => Self::Config(other.to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    #[test]
+    fn unknown_item_number_is_http_404() {
+        let err = Error::Items(wicket_mod_items::Error::UnknownNumber("MDS-nope".into()));
+        let (code, status, field, _) = err.envelope();
+        assert_eq!(code, "NOT_FOUND");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(field, None);
+    }
+
+    #[test]
+    fn production_not_found_is_http_404() {
+        let err = Error::Production(wicket_mod_production_min::Error::NotFound);
+        let (code, status, field, _) = err.envelope();
+        assert_eq!(code, "NOT_FOUND");
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(field, None);
+    }
+
+    #[test]
+    fn identity_invalid_limit_is_http_400() {
+        let err = Error::Identity(wicket_identity::Error::InvalidLimit);
+        let (code, status, field, _) = err.envelope();
+        assert_eq!(code, "VALIDATION");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(field, Some("limit"));
+    }
+
+    #[test]
+    fn items_invalid_limit_is_http_400() {
+        let err = Error::Items(wicket_mod_items::Error::InvalidLimit);
+        let (code, status, field, _) = err.envelope();
+        assert_eq!(code, "VALIDATION");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(field, Some("limit"));
     }
 }
