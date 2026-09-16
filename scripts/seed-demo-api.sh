@@ -21,6 +21,9 @@ trap cleanup EXIT
 BASE="$WICKET_DEMO_BASE_URL"
 idem_key() { uuidgen | tr '[:upper:]' '[:lower:]'; }
 
+# Stable keys so a second seed run replays instead of duplicating documents.
+DEMO_ON_HAND_RECEIPT_IDEM="00000000-0000-4000-8000-00000000d001"
+
 qty() {
   local amount="$1" unit="$2" dim="$3"
   jq -nc --arg a "$amount" --argjson u "$unit" --arg d "$dim" \
@@ -62,6 +65,16 @@ api_post() {
     -d "$body"
 }
 
+api_post_idem() {
+  local path="$1" body="$2" key="$3"
+  curl -sf -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
+    -X POST "$BASE$path" \
+    -H 'content-type: application/json' \
+    -H "x-csrf-token: $DEMO_CSRF" \
+    -H "idempotency-key: $key" \
+    -d "$body"
+}
+
 api_post_if_match() {
   local path="$1" body="$2" ver="$3"
   curl -sf -b "$COOKIE_JAR" -c "$COOKIE_JAR" \
@@ -79,6 +92,95 @@ find_item_id() {
     | jq -r --arg n "$prefix" '.data[] | select(.number==$n) | .id' | head -1
 }
 
+find_location_id() {
+  local code="$1"
+  api_get "/api/v1/locations?limit=50" \
+    | jq -r --arg c "$code" '.data[] | select(.code==$c) | .id' | head -1
+}
+
+find_lot_id() {
+  local item_id="$1" identifier="$2"
+  api_get "/api/v1/lots?item_id=${item_id}&limit=50" \
+    | jq -r --arg id "$identifier" '.data[] | select(.identifier==$id) | .id' | head -1
+}
+
+find_completed_work_order_id() {
+  local item_id="$1"
+  api_get "/api/v1/work-orders?limit=20" \
+    | jq -r --arg i "$item_id" \
+      '.data[] | select(.item_id==$i and .status=="completed") | .id' | head -1
+}
+
+on_hand_qty() {
+  local item_id="$1"
+  api_get "/api/v1/inventory/on-hand?item_id=${item_id}" | jq -r .on_hand
+}
+
+is_positive_decimal() {
+  local v="$1"
+  awk -v x="$v" 'BEGIN { if (x+0 > 0) exit 0; exit 1 }'
+}
+
+write_demo_id_files() {
+  local item_id="$1" lot_id="$2" wo_id="$3"
+  printf '%s\n' "$item_id" >"$ROOT/dev/demo-seed-item-id"
+  printf '%s\n' "$lot_id" >"$ROOT/dev/demo-seed-lot-id"
+  printf '%s\n' "$wo_id" >"$ROOT/dev/demo-seed-work-order-id"
+}
+
+# Item-level getOnHand only folds lot-less postings; release finished lot for available
+# and post one lot-less EA so the inventory tab shows non-zero on hand.
+ensure_item_master_inventory() {
+  local screw="$1" fin_lot="$2"
+  local aloc fg lot_ver status qty_body
+
+  aloc="$(find_location_id "WH-A")"
+  fg="$(find_location_id "WH-FG")"
+  if [ -z "$aloc" ] || [ -z "$fg" ]; then
+    echo "seed-demo-api: demo locations missing (WH-A / WH-FG)" >&2
+    exit 1
+  fi
+
+  status="$(api_get "/api/v1/lots/$fin_lot" | jq -r .status)"
+  if [ "$status" = "quarantine" ]; then
+    lot_ver="$(api_get "/api/v1/lots/$fin_lot" | jq -r .version)"
+    api_post_if_match "/api/v1/inventory/releases" "$(jq -nc \
+      --arg lot "$fin_lot" \
+      --arg from "$fg" \
+      --arg to "$aloc" \
+      --argjson q "$(qty "5" 1 "Count")" \
+      '{lot_id:$lot, from_location_id:$from, to_location_id:$to, entered:$q}')" "$lot_ver" >/dev/null
+  fi
+
+  if ! is_positive_decimal "$(on_hand_qty "$screw")"; then
+    qty_body="$(qty "1" 1 "Count")"
+    api_post_idem "/api/v1/inventory/receipts" "$(jq -nc \
+      --arg item "$screw" \
+      --arg loc "$aloc" \
+      --argjson q "$qty_body" \
+      '{
+        item_id: $item,
+        location_id: $loc,
+        quantity: $q,
+        entered: $q,
+        unit_cost: {amount: "0.250000", currency: 840}
+      }')" "$DEMO_ON_HAND_RECEIPT_IDEM" >/dev/null
+  fi
+
+  if ! is_positive_decimal "$(on_hand_qty "$screw")"; then
+    echo "seed-demo-api: on-hand still zero for item $screw" >&2
+    exit 1
+  fi
+}
+
+finalize_demo_seed() {
+  local screw="$1" fin_lot="$2" wo_id="$3"
+  ensure_item_master_inventory "$screw" "$fin_lot"
+  api_get "/api/v1/genealogy/trace?from_lot_id=$fin_lot&direction=backward" >/dev/null
+  write_demo_id_files "$screw" "$fin_lot" "$wo_id"
+  echo "seed-demo-api: ok (item=$screw, lot=$fin_lot, work_order=$wo_id)"
+}
+
 wait_for_engine() {
   local i
   for i in $(seq 1 60); do
@@ -94,10 +196,16 @@ wait_for_engine() {
 wait_for_engine
 login
 
-existing="$(find_item_id "MDS-450-M4x12" || true)"
-if [ -n "$existing" ]; then
-  echo "seed-demo-api: demo data already present (item MDS-450-M4x12 id=$existing)"
-  printf '%s\n' "$existing" >"$ROOT/dev/demo-seed-item-id"
+screw="$(find_item_id "MDS-450-M4x12" || true)"
+if [ -n "$screw" ]; then
+  fin_lot="$(find_lot_id "$screw" "LOT-WO-1847" || true)"
+  wo_id="$(find_completed_work_order_id "$screw" || true)"
+  if [ -z "$fin_lot" ] || [ -z "$wo_id" ]; then
+    echo "seed-demo-api: item present but demo lot/work order missing (reset demo DB?)" >&2
+    exit 1
+  fi
+  echo "seed-demo-api: demo data already present (item MDS-450-M4x12 id=$screw)"
+  finalize_demo_seed "$screw" "$fin_lot" "$wo_id"
   exit 0
 fi
 
@@ -219,7 +327,5 @@ done="$(api_post_if_match "/api/v1/work-orders/$wo_id/complete" "$(jq -nc \
 fin_lot="$(printf '%s' "$done" | jq -r '.finished_lot.id')"
 
 api_get "/api/v1/genealogy/trace?from_lot_id=$heat&direction=forward" >/dev/null
-api_get "/api/v1/genealogy/trace?from_lot_id=$fin_lot&direction=backward" >/dev/null
 
-printf '%s\n' "$screw" >"$ROOT/dev/demo-seed-item-id"
-echo "seed-demo-api: ok (screw item id=$screw, heat lot=$heat, finished lot=$fin_lot)"
+finalize_demo_seed "$screw" "$fin_lot" "$wo_id"

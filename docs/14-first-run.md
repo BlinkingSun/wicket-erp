@@ -37,6 +37,11 @@ The recipe prints the engine URL, health check path, and demo credentials:
 After seeding, the API holds items such as `MDS-450-M4x12`, lots linked by heat number, inventory,
 and a completed work order so genealogy trace returns a tree.
 
+`just demo` writes `dev/demo-seed-item-id`, `dev/demo-seed-lot-id`, and
+`dev/demo-seed-work-order-id` with UUIDs for the screw item, the finished lot `LOT-WO-1847` (backward
+genealogy shows titanium consumption), and the completed work order. Paste those into the Item Master,
+genealogy, and shop-floor URL paths when the UI asks for an id.
+
 ## UI on another machine or port
 
 The Vite dev server proxies `/api` to the engine. Point it at a running server:
