@@ -36,8 +36,16 @@ the day it is written and silently wrong afterwards.
 1. The `json!` blobs handlers emit are promoted to **named `serde` types**.
 2. JSON Schema is derived from those types with **`schemars`**, added to the workspace
    allow-list under GOV-7.
-3. `openapi.rs` attaches `$ref`s **by capability id**, in a compile-time `match` that is a twin
-   of the `http.rs` bind. A capability with no schema binding fails to compile.
+3. `openapi.rs` attaches `$ref`s **by capability id**, in a `match` that is a twin of the
+   `http.rs` bind, and a **table-walk test** asserts every in-scope capability has a binding.
+
+   **Corrected 2026-09-16.** This clause first said "a capability with no schema binding fails to
+   compile". That is not achievable and the claim is withdrawn: `Capability.id` is
+   `&'static str`, a `match` on `&str` is never exhaustive, and a catch-all arm is mandatory —
+   so a deleted arm compiles and falls through. `http.rs` already lives with this, pairing its
+   `match` with the runtime test `every_capability_has_a_handler`. The guarantee is therefore a
+   **failing test**, not a failing build, and the schema binding gets the same treatment as the
+   handler binding rather than a stronger one it cannot have.
 4. **`schemars` does not own routing.** `utoipa` was rejected for exactly this: it wants route
    registration, which is ADR 0010's job. The capability table remains the only route source.
 5. **`JsonSchema` is not derived on kernel wire primitives** (`AnyQuantity`, `MoneyWire`). Those
@@ -53,10 +61,16 @@ this ADR is that escalation.
 **What it buys.** A schema cannot silently diverge from the handler that produces it, because
 both are the same Rust type. That is the property hand-written schemas cannot have at any price.
 
-**What still needs a gate.** Compile-time binding proves a capability *has* a schema; it does not
+**What still needs a gate.** The table-walk test proves a capability *has* a schema; it does not
 prove the public contract did not change. A committed full-document fixture, generated from the
 same derive path and diffed in `just ci`, is the T-44-shaped review gate on that. It is a review
 signal, not a second source of truth.
+
+**The orphan rule bounds the first wave.** `JsonSchema` can only be derived where the type is
+defined, so a response type owned by a `modules/*` crate cannot be given a schema from
+`wicket-server`. The first wave therefore covers operations whose response types already live in
+`wicket-server`. Extending schemas to module-owned types means adding the derive to those crates,
+which is a wider dependency footprint and a separate decision.
 
 **Reversal cost.** Moderate and bounded: the derives come off, the `$ref` match becomes literal
 JSON, and the document shape is unchanged. This is recorded as an ADR because the decision
