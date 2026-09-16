@@ -1,6 +1,7 @@
 //! Opaque uuid-v7 identifiers. Typed wrappers do not convert across kinds.
 
 use crate::error::Error;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -9,7 +10,9 @@ use uuid::Uuid;
 /// Opaque uuid v7 newtype. `Copy`, `Eq`, `Hash`, `Ord`, `Serialize`, `Deserialize`, `Display`.
 ///
 /// Serde is a hyphenated lowercase string. `Display` is the same form; [`FromStr`] parses it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(transparent)]
 pub struct Identifier(Uuid);
 
@@ -50,7 +53,17 @@ macro_rules! typed_id {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
         #[derive(
-            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+            Debug,
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            Serialize,
+            Deserialize,
+            JsonSchema,
         )]
         #[serde(transparent)]
         pub struct $name(Identifier);

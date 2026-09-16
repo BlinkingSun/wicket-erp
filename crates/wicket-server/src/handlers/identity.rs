@@ -9,7 +9,8 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wicket_core::Identifier;
 use wicket_db::Tx;
@@ -50,25 +51,41 @@ fn require_nonempty<'a>(value: &'a str, field: &'static str) -> Result<&'a str> 
     Ok(trimmed)
 }
 
+/// GET `/api/v1/identity/me` (and principal read) body. Timestamps stay RFC 3339
+/// strings at seconds precision, matching the previous `json!` emission.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PrincipalBody {
+    id: String,
+    principal_kind: String,
+    username: String,
+    display_name: String,
+    status: String,
+    created_at: String,
+    deactivated_at: Option<String>,
+}
+
 fn principal_body(p: &Principal) -> Value {
-    json!({
-        "id": p.id.as_uuid().to_string(),
-        "principal_kind": match p.principal_kind {
-            PrincipalKind::User => "User",
-            PrincipalKind::Service => "Service",
-            PrincipalKind::Migration => "Migration",
+    serde_json::to_value(&PrincipalBody {
+        id: p.id.as_uuid().to_string(),
+        principal_kind: match p.principal_kind {
+            PrincipalKind::User => "User".to_owned(),
+            PrincipalKind::Service => "Service".to_owned(),
+            PrincipalKind::Migration => "Migration".to_owned(),
         },
-        "username": p.username,
-        "display_name": p.display_name,
-        "status": match p.status {
-            PrincipalStatus::Active => "Active",
-            PrincipalStatus::Inactive => "Inactive",
+        username: p.username.clone(),
+        display_name: p.display_name.clone(),
+        status: match p.status {
+            PrincipalStatus::Active => "Active".to_owned(),
+            PrincipalStatus::Inactive => "Inactive".to_owned(),
         },
-        "created_at": p.created_at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
-        "deactivated_at": p.deactivated_at.map(|t| {
-            t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-        }),
+        created_at: p
+            .created_at
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        deactivated_at: p
+            .deactivated_at
+            .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
     })
+    .expect("PrincipalBody")
 }
 
 #[derive(Debug, Deserialize)]

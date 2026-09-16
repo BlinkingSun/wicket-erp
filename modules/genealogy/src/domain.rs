@@ -1,6 +1,7 @@
 //! Genealogy query types. No I/O.
 
 use rust_decimal::Decimal;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wicket_core::{
     AnyQuantity, CurrencyId, Identifier, ItemId, LocationId, LotId, PostingId, SerialId,
@@ -16,7 +17,7 @@ pub const DEFAULT_INLINE_MAX_POSTINGS: u32 = 32;
 pub const INLINE_MAX_ENV: &str = "WICKET_GENEALOGY_INLINE_MAX";
 
 /// Trace direction (SPEC query API).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
     /// Recursive CTE down `consumed_posting_id` (D2 §5.3).
@@ -73,7 +74,7 @@ pub struct TraceRequest {
 }
 
 /// One node of the genealogy tree the mockup draws.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TreeNode {
     /// Ledger posting.
     pub posting: i64,
@@ -88,7 +89,10 @@ pub struct TreeNode {
     /// Stock quantity on the node (ledger `Node::quantity`).
     pub quantity: AnyQuantity,
     /// Edge amount into this node (wire shape of [`wicket_core::Money`]).
+    /// `serde(with = rust_decimal::serde::str)` so the wire is a string; a bare
+    /// derive would not compile and a numeric schema would disagree with the wire.
     #[serde(with = "rust_decimal::serde::str")]
+    #[schemars(with = "String")]
     pub amount: Decimal,
     /// Currency of [`Self::amount`].
     pub amount_currency: CurrencyId,
@@ -101,7 +105,7 @@ pub struct TreeNode {
 }
 
 /// A forest returned by a single-direction trace.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Tree {
     /// Direction that produced this forest.
     pub direction: Direction,
@@ -110,7 +114,7 @@ pub struct Tree {
 }
 
 /// Recall list: forward closure to CUSTOMER boundary postings (D2 case g).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Impact {
     /// Inventory shipment documents that reached CUSTOMER.
     pub shipments: Vec<Identifier>,

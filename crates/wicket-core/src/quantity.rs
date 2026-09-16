@@ -3,6 +3,9 @@
 use crate::residual::Scaled;
 use crate::units::{Dimension, DimensionKind, UnitId, UnitRef};
 use rust_decimal::Decimal;
+use schemars::JsonSchema;
+use schemars::r#gen::SchemaGenerator;
+use schemars::schema::{InstanceType, ObjectValidation, Schema, SchemaObject};
 use serde::{Deserialize, Serialize};
 
 /// Maximum decimal places any quantity may carry. Matches the `numeric(24,8)` posting
@@ -290,6 +293,49 @@ pub struct AnyQuantity {
     pub unit: UnitId,
     /// Denormalized so the boundary can check itself without a catalog round-trip.
     pub dimension: DimensionKind,
+}
+
+// Hand-written schema, not `#[derive(JsonSchema)]`. A derive would contradict
+// docs/10-api-conventions.md §3.1 (`amount` is a JSON string, never a number)
+// or leak `rust_decimal` internals into the public contract.
+impl JsonSchema for AnyQuantity {
+    fn schema_name() -> String {
+        "AnyQuantity".to_owned()
+    }
+
+    fn is_referenceable() -> bool {
+        true
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut properties = schemars::Map::new();
+        properties.insert(
+            "amount".to_owned(),
+            SchemaObject {
+                instance_type: Some(InstanceType::String.into()),
+                ..Default::default()
+            }
+            .into(),
+        );
+        properties.insert("unit".to_owned(), generator.subschema_for::<UnitId>());
+        properties.insert(
+            "dimension".to_owned(),
+            generator.subschema_for::<DimensionKind>(),
+        );
+        SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            object: Some(Box::new(ObjectValidation {
+                properties,
+                required: ["amount", "unit", "dimension"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
 }
 
 impl<D: Dimension> From<Quantity<D>> for AnyQuantity {

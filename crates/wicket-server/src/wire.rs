@@ -1,6 +1,7 @@
 //! Shared JSON wire types (`AnyQuantity`, money).
 
 use rust_decimal::Decimal;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wicket_core::{AnyQuantity, CurrencyId, DimensionKind, Money, UnitId};
 
@@ -43,7 +44,7 @@ impl QuantityBody {
 }
 
 /// Wire money.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct MoneyBody {
     /// Amount as a decimal string.
     pub amount: String,

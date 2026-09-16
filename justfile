@@ -405,11 +405,16 @@ lint-module-manifests:
     bash "{{root}}/scripts/lint-module-manifests.sh"
 
 # T-44: capability table (method, path) set vs committed OpenAPI operation fixture.
+# T-35 Wave 1 schemas are not in this fixture: they are derived from handler
+# types (ADR 0011) and gated by slice.rs against the served document. Change a
+# type, serve /api/v1/openapi.json, run `just ci` and `just ci-db`. There is no
+# schema-fixture regenerate step.
 lint-openapi-fixture:
     bash "{{root}}/scripts/lint-openapi-fixture.sh"
 
 # T-44: rewrite the OpenAPI operation fixture from the capability table.
-# Explicit act. Must not become a dependency of ci / ci-db.
+# Explicit act. Must not become a dependency of ci / ci-db. Does not capture
+# request/response schemas (T-35 Wave 1); those live on the types.
 openapi-fixture:
     bash "{{root}}/scripts/lint-openapi-fixture.sh" --write
 

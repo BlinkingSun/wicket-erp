@@ -1,5 +1,6 @@
 //! HTTP contract: routes, error envelope, OpenAPI. No `axum` (CONTRACT §4).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -84,7 +85,7 @@ pub struct ListBody<T> {
 }
 
 /// Wire item (`docs/10` snake_case).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ItemBody {
     /// Id.
     pub id: String,

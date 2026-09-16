@@ -2,6 +2,7 @@
 
 use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::error::Error;
@@ -27,7 +28,8 @@ pub struct ErrorFields {
 }
 
 /// List envelope (docs/10 §2.3).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[schemars(bound = "T: JsonSchema")]
 pub struct ListBody<T: Serialize> {
     /// Page.
     pub data: Vec<T>,

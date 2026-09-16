@@ -5,7 +5,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 use wicket_core::{
@@ -160,10 +161,34 @@ pub async fn login(State(state): State<AppState>, headers: H, body: Bytes) -> Re
     }
 }
 
-#[derive(Debug, Deserialize)]
+/// POST `/api/v1/identity/login` body.
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LoginBody {
     username: String,
     password: String,
+}
+
+/// POST `/api/v1/identity/login` success body.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct LoginResponse {
+    session_id: String,
+    principal_id: String,
+    display_name: String,
+    csrf: String,
+}
+
+/// GET `/api/v1/navigation` body.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct NavigationBody {
+    visible: Vec<String>,
+    hidden: Vec<String>,
+}
+
+/// GET `/api/v1/inventory/on-hand` body. Amounts are decimal strings, not `AnyQuantity`.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct OnHandBody {
+    on_hand: String,
+    available: String,
 }
 
 async fn login_inner(
@@ -208,12 +233,12 @@ async fn login_inner(
         &permissions,
     )
     .await?;
-    let payload = json!({
-        "session_id": sess.id.to_string(),
-        "principal_id": sess.principal.as_uuid().to_string(),
-        "display_name": principal.display_name,
-        "csrf": csrf,
-    });
+    let payload = serde_json::to_value(&LoginResponse {
+        session_id: sess.id.to_string(),
+        principal_id: sess.principal.as_uuid().to_string(),
+        display_name: principal.display_name,
+        csrf,
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &payload).await?;
     tx.commit().await?;
     login_cookies(headers, 200, payload)
@@ -331,10 +356,10 @@ pub async fn navigation(State(state): State<AppState>, headers: H) -> Response {
     {
         return error_response(e, &request_id);
     }
-    Json(json!({
-        "visible": state.kernel().profile.navigation.visible,
-        "hidden": state.kernel().profile.navigation.hidden,
-    }))
+    Json(NavigationBody {
+        visible: state.kernel().profile.navigation.visible.clone(),
+        hidden: state.kernel().profile.navigation.hidden.clone(),
+    })
     .into_response()
 }
 
@@ -546,15 +571,16 @@ async fn list_items_inner(
         .iter()
         .map(wicket_mod_items::api::ItemBody::from)
         .collect();
-    Ok(json!({
-        "data": data,
-        "next_cursor": page.next_cursor,
-        "has_more": page.has_more,
-    }))
+    Ok(serde_json::to_value(&crate::envelope::ListBody {
+        data,
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+    })?)
 }
 
-#[derive(Deserialize)]
-struct ItemPatch {
+/// PATCH `/api/v1/items/{id}` body.
+#[derive(Deserialize, JsonSchema)]
+pub struct ItemPatch {
     #[serde(default)]
     revision: Option<String>,
     #[serde(default)]
@@ -1867,10 +1893,10 @@ async fn on_hand_inner(
     let qty = wicket_mod_inventory::on_hand(&mut tx, query).await;
     let avail = wicket_mod_inventory::available(&mut tx, query).await;
     tx.rollback().await?;
-    Ok(json!({
-        "on_hand": qty?.to_string(),
-        "available": avail?.to_string(),
-    }))
+    Ok(serde_json::to_value(&OnHandBody {
+        on_hand: qty?.to_string(),
+        available: avail?.to_string(),
+    })?)
 }
 
 #[derive(Deserialize)]
@@ -2389,10 +2415,12 @@ async fn trace_inner(state: &AppState, headers: &H, request_id: &str, q: TraceQ)
     tx.rollback().await?;
     match outcome? {
         wicket_mod_genealogy::TraceOutcome::Inline(body) => Ok(serde_json::to_value(&body)?),
-        wicket_mod_genealogy::TraceOutcome::Accepted { job_id, result_url } => Ok(json!({
-            "job_id": job_id.0.to_string(),
-            "result_url": result_url
-        })),
+        wicket_mod_genealogy::TraceOutcome::Accepted { job_id, result_url } => {
+            Ok(serde_json::to_value(&wicket_mod_genealogy::AcceptedBody {
+                job_id: job_id.0.to_string(),
+                result_url,
+            })?)
+        }
     }
 }
 

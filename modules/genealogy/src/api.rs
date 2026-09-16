@@ -1,5 +1,6 @@
 //! HTTP contract: routes, error envelope, OpenAPI. No `axum` (CONTRACT §4).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -60,8 +61,9 @@ pub struct ErrorFields {
     pub request_id: String,
 }
 
-/// 202 Accepted body for a large trace.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 202 Accepted body for a large trace. Served at HTTP 200 by the live handler
+/// (the two shapes share the success status; see SPEC T-35 Wave 1).
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct AcceptedBody {
     /// Job id.
     pub job_id: String,
@@ -81,10 +83,10 @@ pub fn trace_http_status(outcome: &TraceOutcome) -> u16 {
 pub fn trace_http_body(outcome: &TraceOutcome) -> Result<Value, serde_json::Error> {
     match outcome {
         TraceOutcome::Inline(body) => serde_json::to_value(body),
-        TraceOutcome::Accepted { job_id, result_url } => Ok(json!({
-            "job_id": job_id.0.to_string(),
-            "result_url": result_url,
-        })),
+        TraceOutcome::Accepted { job_id, result_url } => serde_json::to_value(&AcceptedBody {
+            job_id: job_id.0.to_string(),
+            result_url: result_url.clone(),
+        }),
     }
 }
 

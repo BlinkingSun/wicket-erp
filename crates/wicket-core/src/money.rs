@@ -4,6 +4,9 @@ use crate::quantity::{Quantity, exceeds_integer_width};
 use crate::residual::{Extended, Settled};
 use crate::units::{CurrencyId, Dimension, UnitId, UnitRef};
 use rust_decimal::Decimal;
+use schemars::JsonSchema;
+use schemars::r#gen::SchemaGenerator;
+use schemars::schema::{InstanceType, ObjectValidation, Schema, SchemaObject};
 use serde::{Deserialize, Serialize};
 
 /// Money carries up to 6 decimal places: enough for 4 sub-minor digits on a 2-minor
@@ -311,6 +314,48 @@ pub struct MoneyWire {
     pub amount: Decimal,
     /// Currency of the amount.
     pub currency: CurrencyId,
+}
+
+// Hand-written schema, not `#[derive(JsonSchema)]`. A derive would contradict
+// docs/10-api-conventions.md §3.2 (`amount` is a JSON string, never a number)
+// or leak `rust_decimal` internals into the public contract.
+impl JsonSchema for MoneyWire {
+    fn schema_name() -> String {
+        "MoneyWire".to_owned()
+    }
+
+    fn is_referenceable() -> bool {
+        true
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        let mut properties = schemars::Map::new();
+        properties.insert(
+            "amount".to_owned(),
+            SchemaObject {
+                instance_type: Some(InstanceType::String.into()),
+                ..Default::default()
+            }
+            .into(),
+        );
+        properties.insert(
+            "currency".to_owned(),
+            generator.subschema_for::<CurrencyId>(),
+        );
+        SchemaObject {
+            instance_type: Some(InstanceType::Object.into()),
+            object: Some(Box::new(ObjectValidation {
+                properties,
+                required: ["amount", "currency"]
+                    .into_iter()
+                    .map(String::from)
+                    .collect(),
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
 }
 
 impl From<Money> for MoneyWire {

@@ -3,6 +3,7 @@
 //! only crate allowed `axum`; this module exposes typed handlers over [`wicket_db::Tx`].
 
 use chrono::Datelike;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wicket_core::{AnyQuantity, ItemId, LotId, SerialId};
 use wicket_db::{Tx, WriteContext};
@@ -15,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::store;
 
 /// Wire expiry `{value, precision}` (`docs/10` §3.4). Month/year omit an invented day.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ExpiryWire {
     /// Value formatted to the claimed precision (`YYYY-MM-DD` / `YYYY-MM` / `YYYY`).
     pub value: String,
@@ -78,7 +79,7 @@ impl ExpiryWire {
 }
 
 /// Lot JSON body (GET).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct LotBody {
     /// Surrogate id.
     pub id: LotId,
@@ -155,7 +156,7 @@ pub struct ListBody<T> {
 }
 
 /// Serial JSON body.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SerialBody {
     /// Surrogate id.
     pub id: SerialId,

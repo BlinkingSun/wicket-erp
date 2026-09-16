@@ -1,19 +1,24 @@
 //! Dimension markers and the unforgeable [`UnitRef`] bridge.
 
 use crate::quantity::QuantityError;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 /// Opaque catalog identifier. Core never interprets the catalog.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct UnitId(pub i64);
 
 /// ISO 4217 numeric currency code; the catalog row lives in the database.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct CurrencyId(pub i32);
 
 /// The sealed kernel dimension set. Adding a variant is a kernel change and a
 /// migration, never a customization. Modules cannot extend it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[non_exhaustive]
 pub enum DimensionKind {
     /// Discrete count (each, dozen, …).

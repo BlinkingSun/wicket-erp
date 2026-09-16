@@ -3,6 +3,7 @@
 //! No I/O. Identifier charset is `wicket_numbering::lot::validate` (invariant 9).
 
 use chrono::{Datelike, NaiveDate};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wicket_core::{AnyQuantity, ItemId, LotId, SerialId};
 
@@ -15,7 +16,7 @@ pub const DEFAULT_SERIAL_TEMPLATE: &str = "SN-{000000}";
 
 /// Lot / serial status. Inventory posts the corresponding movement; this module
 /// records the status and its history only.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum LotStatus {
     /// Received, not yet released.
@@ -52,7 +53,7 @@ impl LotStatus {
 }
 
 /// Expiry precision. A bare `DATE` is forbidden (invariant 12).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ExpiryPrecision {
     /// Calendar day.

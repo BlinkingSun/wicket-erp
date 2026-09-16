@@ -45,7 +45,7 @@ pub enum TraceOutcome {
 }
 
 /// Body of a finished trace.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(untagged)]
 pub enum TraceBody {
     /// One direction.

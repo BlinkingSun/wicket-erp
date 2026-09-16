@@ -1,6 +1,7 @@
 //! Enqueue, cancel, progress, and read-only status.
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -33,7 +34,7 @@ impl Default for EnqueueOptions {
 }
 
 /// Snapshot of a job row for readers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct JobStatus {
     /// Job id.
     pub id: JobId,
@@ -60,7 +61,7 @@ pub struct JobStatus {
 }
 
 /// Job queue state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[non_exhaustive]
 pub enum JobState {
     /// Waiting for a worker.

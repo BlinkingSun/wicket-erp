@@ -1917,6 +1917,135 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
     }
 }
 
+/// T-35 Wave 1: the twelve mockup-pressed operations carry request/response
+/// schemas on the *served* document (SPEC §4.3). The table-walk is a twin of
+/// `every_capability_has_a_handler`; this test is the contract a generated
+/// client would read.
+#[tokio::test(flavor = "multi_thread")]
+async fn served_openapi_carries_wave1_body_schemas() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    const WAVE1: &[&str] = &[
+        "getItem",
+        "listItems",
+        "updateItem",
+        "getLot",
+        "listSerials",
+        "traceGenealogy",
+        "getImpact",
+        "getGenealogyJob",
+        "getOnHand",
+        "login",
+        "getNavigation",
+        "getOwnProfile",
+    ];
+    const WAVE1_REQUEST: &[&str] = &["updateItem", "login"];
+    for profile in profiles() {
+        let w = common::boot(profile).await;
+        let (st, doc) = w.get("/api/v1/openapi.json").await;
+        assert_eq!(st, StatusCode::OK, "{doc}");
+        let listed = registered_operations(&doc);
+        assert_eq!(listed.len(), 65, "operation set must stay at 65");
+
+        for id in WAVE1 {
+            let cap = capabilities()
+                .find(|c| c.id == *id)
+                .unwrap_or_else(|| panic!("{id} missing from capability table"));
+            let op = served_operation(&doc, cap);
+            let schema = &op["responses"]["200"]["content"]["application/json"]["schema"];
+            assert!(
+                schema.is_object(),
+                "{id} missing responses.200 content schema: {schema}"
+            );
+            if WAVE1_REQUEST.contains(id) {
+                let req = &op["requestBody"]["content"]["application/json"]["schema"];
+                assert!(req.is_object(), "{id} missing requestBody schema: {req}");
+            } else {
+                assert!(
+                    op.get("requestBody").is_none(),
+                    "{id} must not advertise a requestBody"
+                );
+            }
+        }
+
+        let trace_cap = capabilities()
+            .find(|c| c.id == "traceGenealogy")
+            .expect("traceGenealogy");
+        let trace_op = served_operation(&doc, trace_cap);
+        let trace_schema = &trace_op["responses"]["200"]["content"]["application/json"]["schema"];
+        let branches = trace_schema["oneOf"]
+            .as_array()
+            .unwrap_or_else(|| panic!("traceGenealogy 200 schema must be oneOf: {trace_schema}"));
+        assert_eq!(
+            branches.len(),
+            2,
+            "traceGenealogy oneOf must name both HTTP 200 shapes"
+        );
+        let refs: Vec<&str> = branches
+            .iter()
+            .filter_map(|b| b.get("$ref").and_then(Value::as_str))
+            .collect();
+        assert!(
+            refs.iter().any(|r| r.ends_with("/TraceBody")),
+            "traceGenealogy oneOf missing TraceBody (inline tree): {refs:?}"
+        );
+        assert!(
+            refs.iter().any(|r| r.ends_with("/AcceptedBody")),
+            "traceGenealogy oneOf missing AcceptedBody (job_id, result_url): {refs:?}"
+        );
+
+        let trace_body = &doc["components"]["schemas"]["TraceBody"];
+        assert!(
+            trace_body.get("oneOf").is_some(),
+            "TraceBody must be oneOf in the served document (untagged enum is mutually exclusive): {trace_body}"
+        );
+        assert!(
+            trace_body.get("anyOf").is_none(),
+            "TraceBody must not pass schemars anyOf through: {trace_body}"
+        );
+
+        let accepted = &doc["components"]["schemas"]["AcceptedBody"];
+        assert!(
+            accepted["properties"]["job_id"].is_object(),
+            "AcceptedBody.job_id: {accepted}"
+        );
+        assert!(
+            accepted["properties"]["result_url"].is_object(),
+            "AcceptedBody.result_url: {accepted}"
+        );
+
+        let tree_node = &doc["components"]["schemas"]["TreeNode"];
+        assert_eq!(
+            tree_node["properties"]["amount"]["type"], "string",
+            "TreeNode.amount is serde-str; schema must say string: {tree_node}"
+        );
+
+        let any_qty = &doc["components"]["schemas"]["AnyQuantity"];
+        assert_eq!(
+            any_qty["properties"]["amount"]["type"], "string",
+            "AnyQuantity.amount is a JSON string (docs/10 §3.1): {any_qty}"
+        );
+        let money = &doc["components"]["schemas"]["MoneyWire"];
+        assert_eq!(
+            money["properties"]["amount"]["type"], "string",
+            "MoneyWire.amount is a JSON string (docs/10 §3.2): {money}"
+        );
+
+        // Out of scope keeps today's bare responses block.
+        let create = served_operation(
+            &doc,
+            capabilities()
+                .find(|c| c.id == "createItem")
+                .expect("createItem"),
+        );
+        assert!(
+            create["responses"]["200"].get("content").is_none(),
+            "createItem is out of Wave 1 scope and must stay a bare responses block"
+        );
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn get_handlers_are_read_only() {
     if common::skip_if_no_pg() {
