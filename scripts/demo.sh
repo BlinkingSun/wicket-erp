@@ -32,8 +32,8 @@ if command -v docker >/dev/null 2>&1; then
 fi
 
 if ! "$psql" "$WICKET_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'SELECT 1' >/dev/null 2>&1; then
-  echo "demo: database not reachable; running db-reset..."
-  just -f "$ROOT/justfile" db-reset
+  echo "demo: database not reachable; running demo-db-reset..."
+  bash "$ROOT/scripts/demo-db-reset.sh"
 fi
 
 echo "demo: migrating..."
@@ -80,7 +80,7 @@ Wicket demo is ready.
     export WICKET_API_ORIGIN=$WICKET_DEMO_BASE_URL
     npm run dev --prefix apps/wicket-web
 
-  Reset database: just db-up && just db-reset && just demo
+  Reset database: just db-up && just demo-db-reset && just demo
 
 EOF
 

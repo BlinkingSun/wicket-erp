@@ -7,8 +7,8 @@ produces no errors.
 | File | Purpose |
 |---|---|
 | `00-init-roles.sql` | Five roles from D3 §1.1 / CONTRACT §8a. Dev-only password `wicket` on the two LOGIN roles. |
-| `01-database.sql` | Creates `wicket_test_template` and `wicket_test`, owned by `wicket_owner`. Marks the template. |
-| `02-grants.sql` | Schema classes `app` / `transient` / `audit` and default privileges (D-W1-2), inside both databases. |
+| `01-database.sql` | Creates `wicket_test_template`, `wicket_test`, and `wicket_demo` (local demo; see `dev/demo.env`), owned by `wicket_owner`. Marks the template. |
+| `02-grants.sql` | Schema classes `app` / `transient` / `audit` and default privileges (D-W1-2), on `:"template"`, `:"dbname"`, and `wicket_demo`. |
 
 ## MacBook (Homebrew postgresql@17)
 

@@ -158,3 +158,53 @@ BEGIN
     ) ON audit.event TO wicket_audit_event;                            -- audit-persistence §1.3
   END IF;
 END $$;
+
+-- Same grant pattern on wicket_demo when db-reset used dbname=wicket_test (see dev/demo.env).
+-- When dbname is already wicket_demo, this block is a second idempotent pass on the same database.
+\connect wicket_demo
+
+CREATE SCHEMA IF NOT EXISTS app       AUTHORIZATION wicket_migrate;
+CREATE SCHEMA IF NOT EXISTS transient AUTHORIZATION wicket_migrate;
+CREATE SCHEMA IF NOT EXISTS audit     AUTHORIZATION wicket_migrate;
+
+REVOKE ALL   ON SCHEMA app, transient, audit FROM PUBLIC;
+GRANT  USAGE ON SCHEMA app, transient, audit TO   wicket_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_migrate IN SCHEMA app
+  GRANT SELECT, INSERT, UPDATE ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_migrate IN SCHEMA transient
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_migrate IN SCHEMA audit
+  GRANT SELECT ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_migrate IN SCHEMA app, transient
+  GRANT USAGE ON SEQUENCES TO wicket_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_owner IN SCHEMA app
+  GRANT SELECT, INSERT, UPDATE ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_owner IN SCHEMA transient
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_owner IN SCHEMA audit
+  GRANT SELECT ON TABLES TO wicket_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_owner IN SCHEMA app, transient
+  GRANT USAGE ON SEQUENCES TO wicket_app;
+
+GRANT USAGE ON SCHEMA audit TO wicket_audit_row, wicket_audit_event;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_migrate IN SCHEMA audit
+  GRANT INSERT ON TABLES TO wicket_audit_row;
+ALTER DEFAULT PRIVILEGES FOR ROLE wicket_owner IN SCHEMA audit
+  GRANT INSERT ON TABLES TO wicket_audit_row;
+
+DO $$
+BEGIN
+  IF to_regclass('audit.event') IS NOT NULL THEN
+    REVOKE ALL ON audit.event FROM PUBLIC;
+    GRANT SELECT ON audit.event TO wicket_app;
+    GRANT INSERT ON audit.event TO wicket_audit_row;
+    GRANT INSERT (
+      event_id, at, stmt_at, xid, actor_id, actor_kind, actor_display,
+      acting_for_id, session_id, request_id, source_kind, source_device_id,
+      source_ip, client_app, action, reason, doc_type, doc_id, esign_id
+    ) ON audit.event TO wicket_audit_event;
+  END IF;
+END $$;

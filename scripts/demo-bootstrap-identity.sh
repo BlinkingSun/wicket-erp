@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply dev/sql/03-demo-bootstrap.sql (requires migrate + Argon2id hash).
+# Apply dev/demo/bootstrap-identity.sql (requires migrate + Argon2id hash).
 set -eu
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091

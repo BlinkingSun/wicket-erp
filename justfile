@@ -436,7 +436,11 @@ ui-build:
 ui-test:
     npm run test --prefix "{{root}}/apps/wicket-web"
 
+# Reset wicket_demo only (dev/demo.env). Does not recreate or wipe wicket_test (ci-db).
+demo-db-reset:
+    bash "{{root}}/scripts/demo-db-reset.sh"
+
 # Local demo: Postgres, migrate, dev login bootstrap, API seed, engine on 127.0.0.1:8080.
-# Fresh database: `just db-up && just db-reset && just demo` first.
+# Fresh demo DB: `just db-up && just demo-db-reset && just demo` (or `just demo` auto-resets if missing).
 demo:
     bash "{{root}}/scripts/demo.sh"

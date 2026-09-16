@@ -22,7 +22,13 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'template')\gexec
 SELECT format('CREATE DATABASE %I OWNER wicket_owner', :'dbname')
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = :'dbname')\gexec
 
+-- Standing local demo database (`dev/demo.env`); separate from wicket_test so `just demo`
+-- does not share a database with `just ci-db`.
+SELECT format('CREATE DATABASE %I OWNER wicket_owner', 'wicket_demo')
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'wicket_demo')\gexec
+
 -- Cloned case databases inherit the template limit; two pools x max_connections(2) fit in 8.
 ALTER DATABASE :"template" WITH IS_TEMPLATE true;
 ALTER DATABASE :"template" CONNECTION LIMIT 8;
 ALTER DATABASE :"dbname" CONNECTION LIMIT 20;
+ALTER DATABASE wicket_demo CONNECTION LIMIT 20;
