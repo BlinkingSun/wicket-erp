@@ -111,3 +111,28 @@ dependency and land first (T-35 Wave 0). Typed bodies follow under this ADR, sma
 first: the operations the approved genealogy and item-master mockups press.
 
 Evidence: `_team/reports/spike-t35-schemas.md`, `_team/reports/spike-t35-signature.md`.
+
+## Amendment 3 — typed ids are included, not excluded (2026-09-16)
+
+Amendment 2 granted the module crates so the orphan rule could be satisfied. It left a
+statement in Consequences that `wicket-core` typed ids remain excluded from the derive. That
+statement is **withdrawn**: it cannot be honoured.
+
+`LotBody`, `SerialBody`, `TreeNode`, `Impact` and `JobId` all embed `wicket-core` typed ids.
+`JsonSchema` is not derivable for a struct whose fields do not implement it, so excluding the
+ids makes every one of those derives fail to compile. The exclusion described an arrangement
+that does not exist.
+
+Typed ids are UUID or string newtypes. A derive on them emits
+`{"type": "string", "format": "uuid"}` — verified by compiling it, not by reading it — which is
+exactly true and carries no maintenance burden. They are therefore **included**.
+
+What the original exclusion was actually protecting is narrower and still stands:
+**`AnyQuantity` and `MoneyWire` get no derive.** Their wire encodings are hand-specified in
+`docs/10-api-conventions.md` §3.1-§3.2, and a derive would either contradict that document or
+leak `rust_decimal` internals into the public schema. They get hand-written schemas quoting
+`docs/10`.
+
+The same care applies to any field carrying `#[serde(with = ...)]`: `TreeNode.amount` is a
+`Decimal` that serialises as a string, so its schema must say `String`. A derived schema that
+disagrees with the wire is worse than no schema, because a generated client will trust it.
