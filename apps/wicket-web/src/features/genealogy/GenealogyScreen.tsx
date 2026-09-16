@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { traceGenealogy } from "../../api/client";
-import type { GenealogyResultView } from "../../api/view-models";
+import type { GenealogyResultView, TraceQueryDirection } from "../../api/view-models";
 import { GenealogyQuery } from "./GenealogyQuery";
 import { GenealogyTrace } from "./GenealogyTrace";
 
 type GenealogyScreenProps = {
   fromLotId?: string;
-  direction: "forward" | "backward";
+  direction: TraceQueryDirection;
 };
 
 export function GenealogyScreen({ fromLotId, direction }: GenealogyScreenProps) {
@@ -25,16 +25,24 @@ export function GenealogyScreen({ fromLotId, direction }: GenealogyScreenProps) 
     enabled,
   });
 
+  function setSearch(next: { fromLotId?: string; direction: TraceQueryDirection }) {
+    void navigate({
+      to: "/quality/genealogy",
+      search: { from_lot_id: next.fromLotId, direction: next.direction },
+    });
+  }
+
   return (
     <div>
       <GenealogyQuery
         key={fromLotId ?? "empty"}
         initialLotId={fromLotId ?? ""}
+        direction={direction}
         onTrace={(lotId) => {
-          void navigate({
-            to: "/quality/genealogy",
-            search: { from_lot_id: lotId, direction },
-          });
+          setSearch({ fromLotId: lotId, direction });
+        }}
+        onDirectionChange={(next) => {
+          setSearch({ fromLotId, direction: next });
         }}
       />
       <TraceResult

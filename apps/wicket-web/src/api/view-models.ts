@@ -1,5 +1,9 @@
 export type TraceDirection = "forward" | "backward";
 
+export const TRACE_QUERY_DIRECTIONS = ["backward", "forward", "both"] as const;
+
+export type TraceQueryDirection = (typeof TRACE_QUERY_DIRECTIONS)[number];
+
 export type TraceQuantityView = {
   amount: string;
   unit: number;

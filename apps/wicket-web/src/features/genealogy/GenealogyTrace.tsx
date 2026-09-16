@@ -1,3 +1,4 @@
+import { formatCurrencyCode } from "../../api/format-currency";
 import type {
   GenealogyBothTraceView,
   GenealogyTraceView,
@@ -82,7 +83,7 @@ function NodeMeta({ node }: { node: TraceTreeNodeView }) {
         On hand {formatQuantityLabel(node.quantity)}
       </div>
       <div className="node-card__meta mono">
-        Amount {node.amount} (currency {node.amountCurrency})
+        Amount {node.amount} {formatCurrencyCode(node.amountCurrency)}
       </div>
       {node.itemId ? (
         <div className="node-card__meta">

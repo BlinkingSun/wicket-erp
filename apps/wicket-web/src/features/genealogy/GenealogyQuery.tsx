@@ -1,4 +1,8 @@
 import { useState, type FormEvent } from "react";
+import {
+  TRACE_QUERY_DIRECTIONS,
+  type TraceQueryDirection,
+} from "../../api/view-models";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -6,12 +10,31 @@ const UUID_RE =
 export const HUMAN_ID_NOTE =
   "This field accepts a lot UUID. Human-identifier entry is not yet available.";
 
-type GenealogyQueryProps = {
-  initialLotId: string;
-  onTrace: (lotId: string) => void;
+const DIRECTION_LABEL: Record<TraceQueryDirection, string> = {
+  backward: "Backward",
+  forward: "Forward",
+  both: "Both",
 };
 
-export function GenealogyQuery({ initialLotId, onTrace }: GenealogyQueryProps) {
+const DIRECTION_HELP: Record<TraceQueryDirection, string> = {
+  backward: "What went into this lot",
+  forward: "Where this lot ended up",
+  both: "Both directions from this lot",
+};
+
+type GenealogyQueryProps = {
+  initialLotId: string;
+  direction: TraceQueryDirection;
+  onTrace: (lotId: string) => void;
+  onDirectionChange: (direction: TraceQueryDirection) => void;
+};
+
+export function GenealogyQuery({
+  initialLotId,
+  direction,
+  onTrace,
+  onDirectionChange,
+}: GenealogyQueryProps) {
   const [value, setValue] = useState(initialLotId);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +70,32 @@ export function GenealogyQuery({ initialLotId, onTrace }: GenealogyQueryProps) {
           <SearchIcon />
         </button>
       </form>
+      <div className="genealogy-direction">
+        <span className="genealogy-direction__label" id="trace-direction-label">
+          Direction
+        </span>
+        <div
+          className="genealogy-direction__group"
+          role="radiogroup"
+          aria-labelledby="trace-direction-label"
+        >
+          {TRACE_QUERY_DIRECTIONS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              role="radio"
+              className="genealogy-direction__option"
+              aria-checked={direction === option}
+              title={DIRECTION_HELP[option]}
+              onClick={() => {
+                onDirectionChange(option);
+              }}
+            >
+              {DIRECTION_LABEL[option]}
+            </button>
+          ))}
+        </div>
+      </div>
       <p id="lot-uuid-note" className="query-note">
         {HUMAN_ID_NOTE}
       </p>

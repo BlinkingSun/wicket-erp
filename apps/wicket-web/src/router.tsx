@@ -4,6 +4,7 @@ import {
   createRouter,
   redirect,
 } from "@tanstack/react-router";
+import type { TraceQueryDirection } from "./api/view-models";
 import { ShopFloorTerminal } from "./features/floor/ShopFloorTerminal";
 import { GenealogyScreen } from "./features/genealogy/GenealogyScreen";
 import { ItemMasterScreen } from "./features/items/ItemMasterScreen";
@@ -98,8 +99,15 @@ const qualityIndexRoute = createRoute({
 
 type GenealogySearch = {
   from_lot_id?: string;
-  direction?: "forward" | "backward";
+  direction?: TraceQueryDirection;
 };
+
+function parseTraceDirection(value: unknown): TraceQueryDirection | undefined {
+  if (value === "backward" || value === "forward" || value === "both") {
+    return value;
+  }
+  return undefined;
+}
 
 const genealogyRoute = createRoute({
   getParentRoute: () => qualityRoute,
@@ -107,12 +115,7 @@ const genealogyRoute = createRoute({
   validateSearch: (search: Record<string, unknown>): GenealogySearch => ({
     from_lot_id:
       typeof search.from_lot_id === "string" ? search.from_lot_id : undefined,
-    direction:
-      search.direction === "backward"
-        ? "backward"
-        : search.direction === "forward"
-          ? "forward"
-          : undefined,
+    direction: parseTraceDirection(search.direction),
   }),
   component: function GenealogyRoute() {
     const { from_lot_id, direction } = genealogyRoute.useSearch();

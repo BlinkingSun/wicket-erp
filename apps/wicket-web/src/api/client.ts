@@ -9,7 +9,7 @@ import type {
   GenealogyResultView,
   ItemMasterView,
   OwnProfileView,
-  TraceDirection,
+  TraceQueryDirection,
   WorkOrderView,
 } from "./view-models";
 
@@ -19,6 +19,7 @@ export type {
   ItemMasterView,
   OwnProfileView,
   TraceDirection,
+  TraceQueryDirection,
   WorkOrderView,
 } from "./view-models";
 
@@ -74,7 +75,7 @@ export async function updateItem(args: {
 
 export async function traceGenealogy(args: {
   fromLotId: string;
-  direction: TraceDirection;
+  direction: TraceQueryDirection;
 }): Promise<GenealogyResultView> {
   const params = new URLSearchParams({
     from_lot_id: args.fromLotId,

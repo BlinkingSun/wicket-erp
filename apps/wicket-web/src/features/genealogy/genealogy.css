@@ -1,3 +1,52 @@
+.genealogy-direction {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.genealogy-direction__label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.genealogy-direction__group {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  background: var(--surface-overlay);
+}
+
+.genealogy-direction__option {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--space) var(--space-2);
+  cursor: pointer;
+}
+
+.genealogy-direction__option + .genealogy-direction__option {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.genealogy-direction__option[aria-checked="true"] {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+.genealogy-direction__option:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+
 .genealogy-trace {
   display: flex;
   flex-direction: column;
