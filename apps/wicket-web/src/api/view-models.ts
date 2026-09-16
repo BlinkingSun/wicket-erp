@@ -80,8 +80,3 @@ export const UNBACKED_REVISION_HISTORY: UnbackedCapability = {
   operationId: "listItemRevisions",
   label: "Revision history",
 };
-
-export const UNBACKED_INVENTORY_TAB: UnbackedCapability = {
-  operationId: "listItemInventory",
-  label: "Inventory",
-};

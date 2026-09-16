@@ -3,6 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ItemMasterView } from "../../api/view-models";
+import { UNBACKED_TAB_CAPABILITIES } from "../../api/view-models";
 import { BOM_COLUMN_HEADERS } from "./bom-columns";
 import { ItemMasterScreen } from "./ItemMasterScreen";
 
@@ -20,10 +21,11 @@ const sampleItem: ItemMasterView = {
 
 vi.mock("../../api/client", () => ({
   getItem: vi.fn(),
+  getOnHand: vi.fn(),
   updateItem: vi.fn(),
 }));
 
-import { getItem } from "../../api/client";
+import { getItem, getOnHand } from "../../api/client";
 
 afterEach(() => {
   cleanup();
@@ -47,11 +49,18 @@ describe("item master screen", () => {
 
     renderScreen(sampleItem.id);
 
-    expect(await screen.findByRole("heading", { name: sampleItem.number })).toBeInTheDocument();
-    expect(screen.getByText(`Rev ${sampleItem.revision}`)).toBeInTheDocument();
-    expect(screen.getByText(sampleItem.statusLabel)).toBeInTheDocument();
+    const heading = await screen.findByRole("heading", { name: sampleItem.number });
+    expect(heading).toBeInTheDocument();
+    expect(
+      within(heading.parentElement as HTMLElement).getByText(`Rev ${sampleItem.revision}`),
+    ).toHaveClass("item-master__revision");
+    expect(screen.getByText(sampleItem.statusLabel)).toHaveClass("status-pill");
     expect(screen.getByText("Make • EA")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(screen.getByText(sampleItem.description)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute("title", expect.stringContaining("No fields"));
 
     expect(screen.getByRole("tab", { name: "Bill of Material" })).toHaveAttribute(
       "aria-selected",
@@ -67,22 +76,48 @@ describe("item master screen", () => {
     }
 
     expect(screen.getByText(/getItemBom/)).toBeInTheDocument();
+
+    const strip = screen.getByLabelText("Revision history");
+    expect(within(strip).getByText(/Rev C/)).toHaveClass("item-revision-strip__entry--current");
+    expect(within(strip).getByText(/listItemRevisions/)).toBeInTheDocument();
   });
 
-  it("shows a Not yet available state on an unbacked tab", async () => {
+  it("shows getOnHand totals on the inventory tab", async () => {
     vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
+    vi.mocked(getOnHand).mockResolvedValueOnce({ onHand: "42", available: "40" });
     const user = userEvent.setup();
 
     renderScreen(sampleItem.id);
     await screen.findByRole("heading", { name: sampleItem.number });
 
-    await user.click(screen.getByRole("tab", { name: "Routing" }));
+    await user.click(screen.getByRole("tab", { name: "Inventory" }));
 
-    const routingTabs = screen.getAllByRole("tab", { name: "Routing" });
-    expect(routingTabs.some((tab) => tab.getAttribute("aria-selected") === "true")).toBe(
-      true,
-    );
-    const routingPanel = screen.getByRole("tabpanel");
-    expect(within(routingPanel).getByText(/getItemRouting/)).toBeInTheDocument();
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText("42")).toBeInTheDocument();
+    expect(within(panel).getByText("40")).toBeInTheDocument();
+    expect(within(panel).getByText(/getOnHand/)).toBeInTheDocument();
+    expect(getOnHand).toHaveBeenCalledWith({ itemId: sampleItem.id });
+  });
+
+  it.each(
+    Object.entries(UNBACKED_TAB_CAPABILITIES) as [
+      keyof typeof UNBACKED_TAB_CAPABILITIES,
+      (typeof UNBACKED_TAB_CAPABILITIES)[keyof typeof UNBACKED_TAB_CAPABILITIES],
+    ][],
+  )("shows a Not yet available state on the $1 tab", async (tabId, capability) => {
+    vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
+    const user = userEvent.setup();
+    const tabLabel =
+      tabId === "where-used"
+        ? "Where Used"
+        : capability.label;
+
+    renderScreen(sampleItem.id);
+    await screen.findByRole("heading", { name: sampleItem.number });
+
+    await user.click(screen.getByRole("tab", { name: tabLabel }));
+
+    const panel = screen.getByRole("tabpanel");
+    expect(within(panel).getByText(new RegExp(capability.operationId))).toBeInTheDocument();
   });
 });

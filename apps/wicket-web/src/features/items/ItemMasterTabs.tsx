@@ -1,10 +1,7 @@
 import { useState } from "react";
 import type { ItemMasterTabId, ItemMasterView } from "../../api/view-models";
-import {
-  UNBACKED_INVENTORY_TAB,
-  UNBACKED_TAB_CAPABILITIES,
-} from "../../api/view-models";
-import { BomTabPanel } from "./ItemMasterPanels";
+import { UNBACKED_TAB_CAPABILITIES } from "../../api/view-models";
+import { BomTabPanel, InventoryTabPanel } from "./ItemMasterPanels";
 import { NotYetAvailable } from "./NotYetAvailable";
 
 const TAB_LABELS: Record<ItemMasterTabId, string> = {
@@ -69,17 +66,7 @@ function TabPanel({
     return <BomTabPanel />;
   }
   if (active === "inventory") {
-    return (
-      <section className="item-tab-panel" aria-label="Inventory">
-        <NotYetAvailable capability={UNBACKED_INVENTORY_TAB} />
-        <p className="item-tab-note">
-          Header fields for {item.number} come from getItem (
-          <span className="mono">{item.kindLabel}</span>, stocking UoM{" "}
-          <span className="mono">{item.stockUomLabel}</span>). On-hand and
-          location detail are not on that operation.
-        </p>
-      </section>
-    );
+    return <InventoryTabPanel itemId={item.id} />;
   }
   const capability = UNBACKED_TAB_CAPABILITIES[active];
   return (

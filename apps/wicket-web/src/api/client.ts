@@ -1,5 +1,6 @@
 import { getJson, patchJson } from "./http";
 import { parseItemBody } from "./map-item";
+import { type OnHandView, parseOnHandBody } from "./map-on-hand";
 import { mapTraceResponse } from "./map-trace";
 import type { ItemPatchWire } from "./types/items";
 import type {
@@ -8,11 +9,28 @@ import type {
   TraceDirection,
 } from "./view-models";
 
+export type { OnHandView } from "./map-on-hand";
 export type { GenealogyResultView, ItemMasterView, TraceDirection } from "./view-models";
 
 export async function getItem(itemId: string): Promise<ItemMasterView> {
   const payload = await getJson(`/api/v1/items/${encodeURIComponent(itemId)}`);
   return parseItemBody(payload);
+}
+
+export async function getOnHand(args: {
+  itemId: string;
+  locationId?: string;
+  lotId?: string;
+}): Promise<OnHandView> {
+  const params = new URLSearchParams({ item_id: args.itemId });
+  if (args.locationId) {
+    params.set("location_id", args.locationId);
+  }
+  if (args.lotId) {
+    params.set("lot_id", args.lotId);
+  }
+  const payload = await getJson(`/api/v1/inventory/on-hand?${params.toString()}`);
+  return parseOnHandBody(payload);
 }
 
 export async function updateItem(args: {
