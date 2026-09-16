@@ -1,8 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory, createRouter } from "@tanstack/react-router";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { routeTree } from "../router";
+
+afterEach(() => {
+  cleanup();
+});
 
 function renderAt(path: string) {
   const queryClient = new QueryClient({
@@ -27,9 +31,11 @@ describe("mode route trees", () => {
     expect(screen.getByText(/Open an item from the API/)).toBeInTheDocument();
   });
 
-  it("reaches the shop-floor empty shell", async () => {
+  it("reaches the shop-floor terminal", async () => {
     renderAt("/floor");
-    expect(await screen.findByText(/Shop floor mode has no screens in this wave/)).toBeInTheDocument();
+    expect(await screen.findByLabelText("Scan traveler or badge")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TAP OR SCAN" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "NO WORK ORDER" })).toBeInTheDocument();
   });
 
   it("reaches the quality genealogy screen", async () => {

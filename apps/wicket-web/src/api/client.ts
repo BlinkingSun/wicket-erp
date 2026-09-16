@@ -1,20 +1,42 @@
 import { getJson, patchJson } from "./http";
+import { parseOwnProfileBody } from "./map-identity";
 import { parseItemBody } from "./map-item";
 import { type OnHandView, parseOnHandBody } from "./map-on-hand";
 import { mapTraceResponse } from "./map-trace";
+import { parseWorkOrderBody } from "./map-work-order";
 import type { ItemPatchWire } from "./types/items";
 import type {
   GenealogyResultView,
   ItemMasterView,
+  OwnProfileView,
   TraceDirection,
+  WorkOrderView,
 } from "./view-models";
 
 export type { OnHandView } from "./map-on-hand";
-export type { GenealogyResultView, ItemMasterView, TraceDirection } from "./view-models";
+export type {
+  GenealogyResultView,
+  ItemMasterView,
+  OwnProfileView,
+  TraceDirection,
+  WorkOrderView,
+} from "./view-models";
 
 export async function getItem(itemId: string): Promise<ItemMasterView> {
   const payload = await getJson(`/api/v1/items/${encodeURIComponent(itemId)}`);
   return parseItemBody(payload);
+}
+
+export async function getWorkOrder(workOrderId: string): Promise<WorkOrderView> {
+  const payload = await getJson(
+    `/api/v1/work-orders/${encodeURIComponent(workOrderId)}`,
+  );
+  return parseWorkOrderBody(payload);
+}
+
+export async function getOwnProfile(): Promise<OwnProfileView> {
+  const payload = await getJson("/api/v1/identity/me");
+  return parseOwnProfileBody(payload);
 }
 
 export async function getOnHand(args: {

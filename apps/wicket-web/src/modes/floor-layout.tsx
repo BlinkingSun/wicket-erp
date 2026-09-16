@@ -1,25 +1,14 @@
 import { Outlet } from "@tanstack/react-router";
-import { ModeSwitch } from "./mode-switch";
+import { ShopFloorTerminal } from "../features/floor/ShopFloorTerminal";
 
 export function FloorLayout() {
   return (
     <div className="floor-shell">
-      <header>
-        <h1>Wicket</h1>
-        <ModeSwitch />
-      </header>
-      <main>
-        <Outlet />
-      </main>
+      <Outlet />
     </div>
   );
 }
 
 export function FloorHome() {
-  return (
-    <p className="shell-copy">
-      Shop floor mode has no screens in this wave. The scan box does not work;
-      human-identifier lookup does not exist.
-    </p>
-  );
+  return <ShopFloorTerminal />;
 }

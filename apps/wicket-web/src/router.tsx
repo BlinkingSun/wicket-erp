@@ -4,6 +4,7 @@ import {
   createRouter,
   redirect,
 } from "@tanstack/react-router";
+import { ShopFloorTerminal } from "./features/floor/ShopFloorTerminal";
 import { GenealogyScreen } from "./features/genealogy/GenealogyScreen";
 import { ItemMasterScreen } from "./features/items/ItemMasterScreen";
 import { FloorHome, FloorLayout } from "./modes/floor-layout";
@@ -67,6 +68,20 @@ const floorIndexRoute = createRoute({
   component: FloorHome,
 });
 
+const floorWorkOrdersRoute = createRoute({
+  getParentRoute: () => floorRoute,
+  path: "work-orders",
+});
+
+const floorWorkOrderRoute = createRoute({
+  getParentRoute: () => floorWorkOrdersRoute,
+  path: "$workOrderId",
+  component: function FloorWorkOrderRoute() {
+    const { workOrderId } = floorWorkOrderRoute.useParams();
+    return <ShopFloorTerminal workOrderId={workOrderId} />;
+  },
+});
+
 const qualityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/quality",
@@ -116,7 +131,10 @@ export const routeTree = rootRoute.addChildren([
     officeIndexRoute,
     officeItemsRoute.addChildren([officeItemsIndexRoute, officeItemMasterRoute]),
   ]),
-  floorRoute.addChildren([floorIndexRoute]),
+  floorRoute.addChildren([
+    floorIndexRoute,
+    floorWorkOrdersRoute.addChildren([floorWorkOrderRoute]),
+  ]),
   qualityRoute.addChildren([qualityIndexRoute, genealogyRoute]),
 ]);
 

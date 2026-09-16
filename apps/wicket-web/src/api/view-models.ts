@@ -47,6 +47,25 @@ export type ItemMasterView = {
   version: number;
 };
 
+export type WorkOrderView = {
+  id: string;
+  number: string | null;
+  itemId: string;
+  quantityAmount: string;
+  quantityDimension: string;
+  status: string;
+  statusLabel: string;
+  revision: string;
+  wipLocationId: string | null;
+  version: number;
+};
+
+export type OwnProfileView = {
+  id: string;
+  username: string;
+  displayName: string;
+};
+
 export const ITEM_MASTER_TABS = [
   "bom",
   "routing",
@@ -80,3 +99,31 @@ export const UNBACKED_REVISION_HISTORY: UnbackedCapability = {
   operationId: "listItemRevisions",
   label: "Revision history",
 };
+
+export const UNBACKED_FLOOR = {
+  identifierLookup: {
+    operationId: "resolveIdentifier",
+    label: "Identifier lookup",
+  },
+  clockOn: { operationId: "clockOn", label: "Clock on" },
+  reportQuantity: {
+    operationId: "reportWorkOrderQuantity",
+    label: "Report quantity",
+  },
+  reportScrap: { operationId: "reportScrap", label: "Report scrap" },
+  certification: {
+    operationId: "getOperatorCertification",
+    label: "Operator certification",
+  },
+  gage: {
+    operationId: "getGageCalibrationStatus",
+    label: "Gage calibration",
+  },
+  drawing: { operationId: "getItemDrawing", label: "Part drawing" },
+  operation: { operationId: "getWorkOrderOperation", label: "Operation" },
+  workCentre: { operationId: "getWorkOrderWorkCentre", label: "Work centre" },
+  remaining: {
+    operationId: "getWorkOrderProgress",
+    label: "Remaining quantity",
+  },
+} as const satisfies Record<string, UnbackedCapability>;
