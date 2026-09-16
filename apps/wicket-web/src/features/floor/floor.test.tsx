@@ -6,7 +6,13 @@ import { parseWorkOrderBody } from "../../api/map-work-order";
 import type { ItemMasterView, WorkOrderView } from "../../api/view-models";
 import { UNBACKED_FLOOR } from "../../api/view-models";
 import { ShopFloorTerminal } from "./ShopFloorTerminal";
-import { SCAN_LOOKUP_UNAVAILABLE } from "./ScanField";
+import {
+  GAGE_REASON,
+  REPORT_QTY_REASON,
+  REPORT_SCRAP_REASON,
+  SCAN_LOOKUP_UNAVAILABLE,
+  unbackedReason,
+} from "./unbacked";
 
 const sampleWorkOrder: WorkOrderView = {
   id: "01932c5a-8b10-7001-8000-000000000042",
@@ -55,6 +61,18 @@ function renderTerminal(workOrderId?: string) {
     </QueryClientProvider>,
   );
 }
+
+function visibleCopy(container: HTMLElement): string {
+  const clone = container.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(".floor-sr-only").forEach((node) => node.remove());
+  return (clone.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+const OPERATION_IDS = [
+  ...Object.values(UNBACKED_FLOOR).map((capability) => capability.operationId),
+  "completeWorkOrder",
+  "approveCalibration",
+] as const;
 
 describe("shop-floor terminal", () => {
   it("parses the getWorkOrder wo_json shape, including a null number", () => {
@@ -109,14 +127,15 @@ describe("shop-floor terminal", () => {
     renderTerminal();
 
     const scan = screen.getByLabelText("Scan traveler or badge");
+    expect(scan).toHaveAttribute("title", SCAN_LOOKUP_UNAVAILABLE);
+    expect(scan).toHaveAttribute("aria-describedby", "floor-scan-note");
     await user.type(scan, "WO-1042");
     await user.click(screen.getByRole("button", { name: "TAP OR SCAN" }));
 
-    const note = await screen.findByText(
-      `Received "WO-1042". ${SCAN_LOOKUP_UNAVAILABLE}`,
-    );
-    expect(note).toBeInTheDocument();
-    expect(note).toHaveAttribute("role", "status");
+    const note = await screen.findByRole("status");
+    expect(note).toHaveAttribute("id", "floor-scan-note");
+    expect(note).toHaveClass("floor-sr-only");
+    expect(note.textContent).toContain('Received "WO-1042"');
     expect(note.textContent).toContain(SCAN_LOOKUP_UNAVAILABLE);
   });
 
@@ -128,30 +147,95 @@ describe("shop-floor terminal", () => {
     renderTerminal(sampleWorkOrder.id);
     await screen.findByRole("heading", { name: "WO-1042" });
 
-    const clockOn = screen.getByRole("button", { name: /CLOCK ON/ });
-    const reportQty = screen.getByRole("button", { name: /REPORT QTY/ });
-    const reportScrap = screen.getByRole("button", { name: /REPORT SCRAP/ });
+    const clockOn = screen.getByRole("button", { name: "CLOCK ON" });
+    const reportQty = screen.getByRole("button", { name: "REPORT QTY" });
+    const reportScrap = screen.getByRole("button", { name: "REPORT SCRAP" });
 
     expect(clockOn).toBeDisabled();
     expect(reportQty).toBeDisabled();
     expect(reportScrap).toBeDisabled();
-    expect(clockOn).toHaveTextContent(UNBACKED_FLOOR.clockOn.operationId);
-    expect(reportQty).toHaveTextContent(UNBACKED_FLOOR.reportQuantity.operationId);
-    expect(reportQty).toHaveTextContent("completeWorkOrder");
-    expect(reportScrap).toHaveTextContent(UNBACKED_FLOOR.reportScrap.operationId);
+    expect(clockOn).toHaveTextContent(/^CLOCK ON$/);
+    expect(reportQty).toHaveTextContent(/^REPORT QTY$/);
+    expect(reportScrap).toHaveTextContent(/^REPORT SCRAP$/);
 
-    expect(screen.getByText(UNBACKED_FLOOR.clockOn.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.reportQuantity.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.reportScrap.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.certification.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.gage.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.operation.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.workCentre.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.remaining.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.drawing.operationId)).toBeInTheDocument();
-    expect(screen.getByText(UNBACKED_FLOOR.identifierLookup.operationId)).toBeInTheDocument();
-    expect(screen.getByText(/approveCalibration/)).toBeInTheDocument();
-    expect(reportQty.textContent).toContain("quantity");
-    expect(reportQty.textContent).toContain("If-Match");
+    expect(clockOn).toHaveAttribute(
+      "title",
+      unbackedReason(UNBACKED_FLOOR.clockOn),
+    );
+    expect(clockOn).toHaveAttribute("aria-describedby", "clock-on-need");
+    expect(reportQty).toHaveAttribute("title", REPORT_QTY_REASON);
+    expect(reportQty).toHaveAttribute("aria-describedby", "report-qty-need");
+    expect(reportScrap).toHaveAttribute("title", REPORT_SCRAP_REASON);
+    expect(reportScrap).toHaveAttribute("aria-describedby", "report-scrap-need");
+
+    expect(document.getElementById("clock-on-need")).toHaveTextContent(
+      UNBACKED_FLOOR.clockOn.operationId,
+    );
+    expect(document.getElementById("report-qty-need")).toHaveTextContent(
+      UNBACKED_FLOOR.reportQuantity.operationId,
+    );
+    expect(document.getElementById("report-scrap-need")).toHaveTextContent(
+      UNBACKED_FLOOR.reportScrap.operationId,
+    );
+    expect(document.getElementById("cert-need")).toHaveTextContent(
+      UNBACKED_FLOOR.certification.operationId,
+    );
+    expect(document.getElementById("gage-need")).toHaveTextContent(
+      UNBACKED_FLOOR.gage.operationId,
+    );
+    expect(document.getElementById("drawing-need")).toHaveTextContent(
+      UNBACKED_FLOOR.drawing.operationId,
+    );
+    expect(document.getElementById("qty-need")).toHaveTextContent(
+      UNBACKED_FLOOR.remaining.operationId,
+    );
+    expect(document.getElementById("floor-scan-note")).toHaveTextContent(
+      UNBACKED_FLOOR.identifierLookup.operationId,
+    );
+    expect(document.getElementById("report-qty-need")?.textContent).toContain(
+      "completeWorkOrder",
+    );
+    expect(document.getElementById("gage-need")?.textContent).toContain(
+      "approveCalibration",
+    );
+
+    const cert = screen.getByText("CERT");
+    const gage = screen.getByText("GAGE");
+    expect(cert).toHaveClass("status-pill");
+    expect(gage).toHaveClass("status-pill");
+    expect(cert).toHaveAttribute("aria-disabled", "true");
+    expect(gage).toHaveAttribute("aria-disabled", "true");
+    expect(cert).toHaveAttribute(
+      "title",
+      unbackedReason(UNBACKED_FLOOR.certification),
+    );
+    expect(gage).toHaveAttribute("title", GAGE_REASON);
+    expect(screen.getByLabelText("Part drawing")).toHaveAttribute(
+      "title",
+      unbackedReason(UNBACKED_FLOOR.drawing),
+    );
+  });
+
+  it("exposes no operation identifier in visible copy", async () => {
+    vi.mocked(getWorkOrder).mockResolvedValueOnce(sampleWorkOrder);
+    vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
+    vi.mocked(getOwnProfile).mockResolvedValueOnce({
+      id: "01932c5a-8b10-7001-8000-000000000099",
+      username: "atester",
+      displayName: "A. Tester",
+    });
+
+    const { container } = renderTerminal(sampleWorkOrder.id);
+    await screen.findByRole("heading", { name: "WO-1042" });
+    await screen.findByText("A. Tester");
+
+    const visible = visibleCopy(container);
+    for (const id of OPERATION_IDS) {
+      expect(visible).not.toContain(id);
+    }
+    expect(visible).not.toMatch(/\bunavailable\b/i);
+    expect(visible).not.toContain("NOT YET AVAILABLE");
+    expect(visible).not.toContain("OP ");
+    expect(visible).not.toContain("WC ");
   });
 });

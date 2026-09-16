@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { UNBACKED_FLOOR } from "../../api/view-models";
+import { SCAN_LOOKUP_UNAVAILABLE } from "./unbacked";
 
-export const SCAN_LOOKUP_UNAVAILABLE =
-  "Identifier lookup is not available on the engine yet. traceGenealogy accepts only from_lot_id, a lot UUID. No operation resolves a work-order number, serial, or part number to an object.";
+export { SCAN_LOOKUP_UNAVAILABLE };
 
 function scanReceivedMessage(raw: string): string {
   const identifier = raw.trim();
@@ -42,18 +41,13 @@ export function ScanField() {
             spellCheck={false}
             autoFocus
             aria-label="Scan traveler or badge"
+            title={SCAN_LOOKUP_UNAVAILABLE}
             aria-describedby="floor-scan-note"
           />
         </div>
       </div>
-      <p id="floor-scan-note" className="floor-scan__note" role="status">
-        {message ?? (
-          <>
-            {UNBACKED_FLOOR.identifierLookup.label} requires operation{" "}
-            <span className="mono">{UNBACKED_FLOOR.identifierLookup.operationId}</span>
-            , which is not mounted on the engine yet.
-          </>
-        )}
+      <p id="floor-scan-note" className="floor-sr-only" role="status">
+        {message ?? SCAN_LOOKUP_UNAVAILABLE}
       </p>
     </form>
   );
