@@ -435,3 +435,8 @@ ui-build:
 
 ui-test:
     npm run test --prefix "{{root}}/apps/wicket-web"
+
+# Local demo: Postgres, migrate, dev login bootstrap, API seed, engine on 127.0.0.1:8080.
+# Fresh database: `just db-up && just db-reset && just demo` first.
+demo:
+    bash "{{root}}/scripts/demo.sh"
