@@ -47,7 +47,26 @@ Before touching the kernel, the ledger, or the module contract, half a day of re
 8. **[DESIGN.md](DESIGN.md)** — binding interface rules.
 9. **[docs/13-ui-wrapper-contract.md](docs/13-ui-wrapper-contract.md)** — the HTTP contract a UI wrapper implements; paste-in agent file: [docs/AGENT-UI-CONTEXT.md](docs/AGENT-UI-CONTEXT.md).
 
-## 5. Building
+## 5. Running it
+
+From a clone with PostgreSQL on `127.0.0.1:5432`, Rust **1.98.1**, and Python 3 with `argon2-cffi` installed, start the local demo with:
+
+```sh
+just demo
+```
+
+The recipe is idempotent. It brings up Postgres when a container runtime is present, migrates the **`wicket_demo`** database, bootstraps a development login, seeds data through `/api/v1`, starts the engine on **`http://127.0.0.1:8080`**, and prints the health URL plus login **`demo`** / password **`demo-login`**. That is a development setup with a known password and a SQL-bootstrapped account, not a production install — [docs/14-first-run.md](docs/14-first-run.md) states why and covers a fresh machine (`just db-up`, `just demo-db-reset`), reset, troubleshooting, and the UI proxy.
+
+The engine is enough to hit the API. For the first-party UI, in another terminal:
+
+```sh
+export WICKET_API_ORIGIN=http://127.0.0.1:8080
+npm run dev --prefix apps/wicket-web
+```
+
+Open the URL Vite prints (default `http://127.0.0.1:5173`). The default route is the **genealogy** screen at `/quality/genealogy` — paste a lot UUID from the seeded demo data to load a trace tree. The **item master** at `/office/items/<item-id>` shows header fields and an inventory tab backed by the API; the BOM, routing, documents, and where-used tabs are deliberate empty states because those operations are not built yet. After seeding, the demo item UUID is in `dev/demo-seed-item-id`. Most other office modules in the shell are disabled; shop-floor mode is still an empty shell.
+
+## 6. Building
 
 Rust **1.98.1** is pinned in `rust-toolchain.toml` (`PLAN.md` §11). PostgreSQL **17** is installed and lifecycle-managed by the operating system; Wicket never installs or manages PostgreSQL (`docs/adr/0003-database.md` as amended). You also need `just` and `sqlx-cli` 0.9.0 (`PLAN.md` §11).
 
@@ -68,11 +87,11 @@ just ui-test
 
 `just ui-install` then `npm run dev --prefix apps/wicket-web` starts the Vite dev server. The genealogy screen is at `/quality/genealogy`. It queries `traceGenealogy` with a lot UUID; human-identifier lookup is ABSENT. Hosted CI gates the UI with the `ui-check` job, which does not need Postgres.
 
-## 6. License
+## 7. License
 
 Wicket is licensed under the GNU Affero General Public License v3.0 or later; see LICENSE. Contributions are accepted under the Developer Certificate of Origin; see CONTRIBUTING.md. Reasoning: [docs/adr/0006-license.md](docs/adr/0006-license.md).
 
-## 7. Contributing
+## 8. Contributing
 
 Read [GOALS.md](GOALS.md) and then [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request.
 Every pull request answers the four goals. CI fails a pull request whose body omits a goal heading (`scripts/check-pr-goals.sh`). Every commit must carry `Signed-off-by` (`scripts/check-dco.sh`).
