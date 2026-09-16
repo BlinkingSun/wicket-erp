@@ -157,9 +157,10 @@ Evidence: `_team/reports/spike-ui-gap.md`, `_team/reports/spike-identifier-looku
 
 ## Wrapper engine findings (verified)
 
-Source: `_team/reports/FINDINGS-wrapper.md` (`wrapper-r1`). Re-verified against the tree
-before recording here (2026-09-16, `docs10-r1`). These are not T- ids; they track gaps
-between the running engine and what operators and UIs need.
+Source: `_team/reports/FINDINGS-wrapper.md` (`wrapper-r1`) and `FINDINGS.md` (W6–W15,
+`backlog-r1`). Re-verified against the tree before recording here (2026-09-16, `docs10-r1`;
+W6–W17 citations checked on landing). These are not T- ids; they track gaps between the
+running engine and what operators and UIs need.
 
 ### W5 — same origin for API and UI (decide before wrapper packaging)
 
@@ -179,6 +180,31 @@ machine clients to bearer tokens). Record the choice before packaging the UI wra
 | W3 | **DONE in docs (2026-09-16).** `docs/10-api-conventions.md` §9.6 sketched `root` / flat `nodes` / `edges` and implied 202 for large traces; the engine emits nested `TreeNode` / `children` and returns job acceptance at HTTP 200 with `job_id` / `result_url` (`domain.rs` `TreeNode`, `handlers/mod.rs` `genealogy_trace`) | Wrong authoritative contract misled specs and clients (including UI fixtures) | Docs corrected at source; optional follow-up: handler calls `trace_http_status` or OpenAPI `oneOf` at 200 |
 | W4 | `RATE_LIMITED`, list `sort`, session lock, OIDC, and human-identifier lookup appear in prose (`docs/10`, navigation mockups) without a mounted operation — scan-box lookup is the painful gap (`TODO.md` human-identifier note) | Clients and operators assume capabilities that 404 or never existed | Mount or tag ABSENT per item; human-identifier: per-entity `by-number` routes per scoped note above |
 | W5 | No CORS; engine does not serve the built SPA (see subsection above) | Cross-device UIs cannot authenticate against a remote engine on the LAN | Choose same-origin static hosting vs CORS policy before wrapper packaging |
+| W6 | `trace_http_status` in `modules/genealogy/src/api.rs:75-79` is never called; `genealogy_trace` returns HTTP 200 for both inline trees and accepted jobs (`crates/wicket-server/src/handlers/mod.rs:2363-2372`, `2416-2423`) | Fossil of an intended 202; clients today must parse the body (`oneOf` at 200) to know inline vs job | After `t35w1-r2` lands, decide once: delete the dead helper and document `oneOf` at 200, or wire `trace_http_status` and make job acceptance 202 — do not flip status mid-wave |
+| W7 | Mounted `traceGenealogy` accepts only `from_lot_id` (`handlers/mod.rs:2354-2408`); the module documents `lot`, `serial`, and `posting` origins (`modules/genealogy/src/api.rs:116-120`) | Shop-floor scan box needs serial, lot, or part number — not a lot UUID; this gap is why the scan box does not exist | Widen the handler to match module origins (hours, not a new module) |
+| W8 | `crates/wicket-server/src/error.rs:189` maps `Items::NotFound`; by-number resolvers return `Items::UnknownNumber` (`modules/items/src/error.rs:56`) with no arm, so misses hit the catch-all at `error.rs:282-287` as HTTP 500 | Unmounted today; mount wave would turn a routine bad scan into "internal server error" and pollute monitoring | **Required in the mount wave:** map `UnknownNumber` (and check `production_min::NotFound`) to 404 with a test — not a follow-up |
+| W9 | **FIXED (`genfix-r1`).** UI had required `{root, nodes, edges}` from the old `docs/10` sketch; engine emits nested `nodes` / `children`. Hand-written `trace.json` fixtures encoded the same mistake, so tests stayed green | Flagship genealogy screen failed on first live engine contact; green unit tests meant nothing | Keep the rule: engine-response fixtures must be **captured** responses (`_team/artifacts/trace-{backward,forward,both}.json`), not authored from docs |
+| W10 | **Minor, not urgent.** OpenAPI `AnyQuantity` / `MoneyWire` schemas (`crates/wicket-core/src/quantity.rs:301`, `money.rs:322`) use plain `string` for `amount` without the scale caps in `docs/10` §3.1–3.2 (`QUANTITY_MAX_SCALE`, `MONEY_MAX_SCALE`) | Honest under-promise: clients learn scale violations from `VALIDATION` on submit, not from the schema | Add `pattern` (or equivalent) when next editing these schemas — not its own wave |
+| W12 | Demo seed posts a **lot-less receipt** so item-level `getOnHand` reads non-zero — a workaround for W11, documented in `demoseed-r1` | With correct item-level `on_hand`, the artificial untracked unit is unrealistic for a lot-controlled device | After W11 fix lands: remove the lot-less receipt from the seed so the demo shows real lot-tracked stock only |
+| W13 | **Confirmed** on captured backward trace (`_team/reports/demoseed-r1.md`): under one parent, two child nodes are **byte-identical** in every exposed field (same `posting`, lot, item, qty, amount) — a consumer summing edges double-counts (e.g. 6000 mm vs 3000 mm seeded) | Recall and material-consumption views must not over-state input; regulated genealogy (`docs/06-regulatory.md`) | **Cause unknown** (duplicate emission vs two ledger rows the API cannot distinguish); fixes differ — reproduce on a live engine, then investigate (`genedup-r1`); do not guess a fix |
+
+### `balance_at`: `None` lot or serial means untracked postings only (W11, W14, W15)
+
+`wicket_ledger::balance_at` filters with `AND p.lot_id IS NOT DISTINCT FROM $4` and
+`AND p.serial_id IS NOT DISTINCT FROM $5` (`crates/wicket-ledger/src/projections.rs:235-236`).
+A `None` lot or serial therefore matches **`lot_id IS NULL` / `serial_id IS NULL`**, not "any
+lot" or "any serial". Inventory tests almost always pass explicit `lot: Some(...)` (often with
+`location: Some(...)`), e.g. `modules/inventory/tests/inventory.rs:38-44` and `:438-444`, and
+`allocated` tests likewise (`inventory.rs:100-145`) — so the item-level HTTP paths stayed
+unexercised until live measurement or a deliberate code read.
+
+| ID | What is wrong | Why it matters | Smallest fix |
+|---|---|---|---|
+| W11 | **Confirmed on live demo engine.** Item-level `GET /api/v1/inventory/on-hand?item_id=…` reported `on_hand: 1` while lot-scoped query showed 5 and `available` showed 6 — one lot held 5 units plus 1 untracked. `on_hand` passes `query.lot` into `balance_at` (`modules/inventory/src/store.rs:531-566`) with the filter above | Planners, buyers, and the Item Master Inventory tab read this number; under-reporting causes phantom shortages and a shelf picture that does not match physical stock for lot-controlled devices | Failing test first: item-level `on_hand` must sum lot-tracked stock like `available` already does at item level (`store.rs:654-688`) |
+| W14 | Same `lot: None` → untracked-only filter as W11, in `allocated` (`store.rs:570-596`). **Not on HTTP** — `getOnHand` exposes only `on_hand` and `available`; nothing in the UI reads `allocated` today | Lower urgency than W11 was, but same defect and same test blind spot (`case_c_issue_one_bar_to_wip_with_explicit_lot_pick_contributes_consumption` always passes `lot: Some(...)`) | Fix when touching allocated; add an item-level test. Note: `cycle_count` calling `on_hand` may already count lot-tracked stock by design — confirm no caller depended on the old number |
+| W15 | **Not reproduced on a running engine** — code-level only. Same trap for `serial: None` (`projections.rs:236`); postings bind `serial_id` (`crates/wicket-ledger/src/post.rs:273-274`, migration `crates/wicket-ledger/migrations/00000000000001_ledger.up.sql:135`); document lines carry `serial_id` (`modules/inventory/src/domain.rs:123-134`, `modules/inventory/src/api.rs:177`, `modules/inventory/src/store.rs:760`); every `BalanceSlice` in `store.rs` passes `serial: None` (no `serial: Some` in this module). Lot-scoped slices still use `serial: None`, so lot+serial postings stay invisible; `available` skips serial-only layers at `store.rs:669` | Serialised devices are core to this product; stock the ledger can post but balances cannot see is worse than no serialisation | **Do not fix on this evidence alone — confirm first:** post a serialised receipt, query `on_hand` at item level, and check whether tests/seed can even produce serial-bearing postings today |
+| W16 | Shop-floor kiosk error state surfaces `Request failed (404) for GET /api/v1/...` from `apps/wicket-web/src/api/http.ts:21` via `ShopFloorTerminal.tsx:70-73` | Same wire-format leak the floor rework removed elsewhere; operators should not see HTTP paths | Operator-facing copy (e.g. "Work order not found"); keep method/path in console or `title` |
+| W17 | Genealogy backward trace renders **one card per posting**, so multiple top-level nodes share the same truncated lot id and look like duplicates (`FIDELITY.md` capture after `genpolish-r1`) | Recall investigators think in lots and movements; repetition reads as a broken screen | **Design decision:** group by lot with postings inside, or show posting id / `occurred_at` on each card — decide deliberately; not a default |
 
 ---
 
