@@ -153,6 +153,35 @@ to `operator` is an owner decision about the permission model, not something a l
 
 Evidence: `_team/reports/spike-ui-gap.md`, `_team/reports/spike-identifier-lookup.md`.
 
+---
+
+## Wrapper engine findings (verified)
+
+Source: `_team/reports/FINDINGS-wrapper.md` (`wrapper-r1`). Re-verified against the tree
+before recording here (2026-09-16, `docs10-r1`). These are not T- ids; they track gaps
+between the running engine and what operators and UIs need.
+
+### W5 — same origin for API and UI (decide before wrapper packaging)
+
+The Vite dev server proxies `/api` to the engine on loopback, so first-party development is
+same-origin today. A UI opened on another shop-floor device is cross-origin: the engine emits
+no CORS headers, and cookie session auth does not cross origins. That blocks the stated goal
+of one engine serving UIs on many devices without a deliberate deployment choice.
+
+**Smallest fix is a product decision, not a one-liner:** either the engine serves the built
+SPA from the same origin, or the engine grows an explicit CORS policy (and likely moves
+machine clients to bearer tokens). Record the choice before packaging the UI wrapper.
+
+| ID | What is wrong | Why it matters | Smallest fix |
+|---|---|---|---|
+| W1 | `POST /api/v1/identity/logout` returns `204` with no `Set-Cookie`; login set `wicket_session` (httpOnly) and `wicket_csrf` (`handlers/mod.rs:222-262`, `logout` `266-297`) while `session::drop_session` deletes the server row (`session.rs:149`) | Dead cookies linger on shared terminals; JS cannot clear httpOnly session cookies, so the next user sees confusing 401s instead of a clean login | Logout emits both cookies with `Max-Age=0` on the same path/flags as login; test the response headers |
+| W2 | Login returns no permission snapshot; `GET /api/v1/navigation` is profile-level, not per-user; no `getOwnPermissions` operation | UIs cannot grey out forbidden actions; every control is try-and-403, which is a shop-floor training problem | Design decision: permission list on login and/or a dedicated introspection route — record before hard-coding role checks in the UI |
+| W3 | **DONE in docs (2026-09-16).** `docs/10-api-conventions.md` §9.6 sketched `root` / flat `nodes` / `edges` and implied 202 for large traces; the engine emits nested `TreeNode` / `children` and returns job acceptance at HTTP 200 with `job_id` / `result_url` (`domain.rs` `TreeNode`, `handlers/mod.rs` `genealogy_trace`) | Wrong authoritative contract misled specs and clients (including UI fixtures) | Docs corrected at source; optional follow-up: handler calls `trace_http_status` or OpenAPI `oneOf` at 200 |
+| W4 | `RATE_LIMITED`, list `sort`, session lock, OIDC, and human-identifier lookup appear in prose (`docs/10`, navigation mockups) without a mounted operation — scan-box lookup is the painful gap (`TODO.md` human-identifier note) | Clients and operators assume capabilities that 404 or never existed | Mount or tag ABSENT per item; human-identifier: per-entity `by-number` routes per scoped note above |
+| W5 | No CORS; engine does not serve the built SPA (see subsection above) | Cross-device UIs cannot authenticate against a remote engine on the LAN | Choose same-origin static hosting vs CORS policy before wrapper packaging |
+
+---
+
 **`traceGenealogy` origin widening.** The mounted operation is narrower than the crate's real
 origins (`serial` / `lot` / `posting`). A handler gap, hours not a module, and genealogy is the
 best candidate for the first painted screen.

@@ -595,60 +595,78 @@ If this edge is `Required` under `NoSignatures`, the response is the same 409 `S
 
 ### 9.6 Genealogy trace
 
-Read-only. No idempotency key. Forward from the heat and backward from the finished lot return the same tree (PLAN §3 acceptance 8).
+Read-only. No idempotency key. The handler always answers **HTTP 200**; distinguish outcomes by the JSON body, not by status code. Forward from the heat and backward from the finished lot return the same consumption forest (PLAN §3 acceptance 8).
 
 ```
 GET /api/v1/genealogy/trace?from_lot_id=01932c5a-8b10-7001-8000-000000000003&direction=forward
 GET /api/v1/genealogy/trace?from_lot_id=01932c5a-8b10-7001-8000-000000000005&direction=backward
 ```
 
-Either response:
+When the forest is small enough to return inline, the body is a nested tree, not a separate `root` / flat `nodes` / `edges` graph. Each node is a ledger posting with kernel ids and a `children` array (`modules/genealogy/src/domain.rs` `TreeNode`; inline body `TraceBody` in `modules/genealogy/src/store.rs`). One direction:
 
 ```json
 {
-  "root": {
-    "lot_id": "01932c5a-8b10-7001-8000-000000000003",
-    "identifier": "HT-ATI-24-8831",
-    "item_id": "01932c5a-8b10-7001-8000-000000000002"
-  },
+  "direction": "forward",
   "nodes": [
     {
-      "lot_id": "01932c5a-8b10-7001-8000-000000000003",
-      "identifier": "HT-ATI-24-8831",
-      "quantity": { "amount": "240.00000000", "unit": 3, "dimension": "Mass" }
-    },
-    {
-      "lot_id": "01932c5a-8b10-7001-8000-000000000004",
-      "identifier": "LOT-BAR-24-4412",
-      "quantity": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" }
-    },
-    {
-      "lot_id": "01932c5a-8b10-7001-8000-000000000005",
-      "identifier": "LOT-WO-1847",
-      "item_id": "01932c5a-8b10-7001-8000-000000000001",
-      "quantity": { "amount": "500.00000000", "unit": 1, "dimension": "Count" },
-      "serials": ["SN-450-000134"]
-    }
-  ],
-  "edges": [
-    {
-      "from_lot_id": "01932c5a-8b10-7001-8000-000000000003",
-      "to_lot_id": "01932c5a-8b10-7001-8000-000000000004",
-      "kind": "split"
-    },
-    {
-      "from_lot_id": "01932c5a-8b10-7001-8000-000000000004",
-      "to_lot_id": "01932c5a-8b10-7001-8000-000000000005",
-      "kind": "transformation",
-      "work_order": "WO-2026-1847",
-      "quantity_in": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" },
-      "quantity_out": { "amount": "500.00000000", "unit": 1, "dimension": "Count" }
+      "posting": 12041,
+      "item": "01932c5a-8b10-7001-8000-000000000002",
+      "lot": "01932c5a-8b10-7001-8000-000000000003",
+      "serial": null,
+      "location": null,
+      "quantity": { "amount": "240.00000000", "unit": 3, "dimension": "Mass" },
+      "amount": "0.000000",
+      "amount_currency": 840,
+      "occurred_at": null,
+      "edge_quantity": { "amount": "240.00000000", "unit": 3, "dimension": "Mass" },
+      "children": [
+        {
+          "posting": 12058,
+          "item": "01932c5a-8b10-7001-8000-000000000002",
+          "lot": "01932c5a-8b10-7001-8000-000000000004",
+          "serial": null,
+          "location": null,
+          "quantity": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" },
+          "amount": "2034.072000",
+          "amount_currency": 840,
+          "occurred_at": "2024-10-03T15:41:22Z",
+          "edge_quantity": { "amount": "258000.00000000", "unit": 2, "dimension": "Length" },
+          "children": [
+            {
+              "posting": 12102,
+              "item": "01932c5a-8b10-7001-8000-000000000001",
+              "lot": "01932c5a-8b10-7001-8000-000000000005",
+              "serial": "01932c5a-8b10-7001-8000-00000000000a",
+              "location": "01932c5a-8b10-7001-8000-000000000009",
+              "quantity": { "amount": "500.00000000", "unit": 1, "dimension": "Count" },
+              "amount": "0.000000",
+              "amount_currency": 840,
+              "occurred_at": "2026-03-18T09:14:03Z",
+              "edge_quantity": { "amount": "500.00000000", "unit": 1, "dimension": "Count" },
+              "children": []
+            }
+          ]
+        }
+      ]
     }
   ]
 }
 ```
 
-Quantities on the tree are `AnyQuantity` with string amounts. The identity seam is visible: millimeters of bar in, each of screw out. Value does not appear here; genealogy is the consumption graph (D2 §5.3), not the trial balance.
+`direction=both` returns `{ "backward": { "direction": "backward", "nodes": [ … ] }, "forward": { "direction": "forward", "nodes": [ … ] } }` instead of a single `direction` / `nodes` pair.
+
+When the posting count exceeds the inline threshold (default 32, env `WICKET_GENEALOGY_INLINE_MAX`), the same route still returns **HTTP 200** with a job pointer — not 202 Accepted:
+
+```json
+{
+  "job_id": "01932c5a-8b10-7001-8000-0000000000aa",
+  "result_url": "/api/v1/genealogy/jobs/01932c5a-8b10-7001-8000-0000000000aa"
+}
+```
+
+Poll `GET` on `result_url` until the job succeeds; `result` carries the same tree shape as inline. (`crates/wicket-server/src/handlers/mod.rs` `genealogy_trace` serializes both outcomes with `Json` and does not call `trace_http_status`.)
+
+`quantity` and `edge_quantity` on each node are `AnyQuantity` with string amounts. `amount` / `amount_currency` are the ledger money on the posting. Human lot numbers and work-order numbers are not fields on the tree; resolve lots through §9.2 when the UI needs labels. Genealogy is the consumption graph (D2 §5.3), not the trial balance.
 
 ---
 
