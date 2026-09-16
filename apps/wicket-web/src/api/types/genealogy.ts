@@ -4,39 +4,34 @@
  * Do not import this module from components.
  */
 
-export type AnyQuantity = {
+export type EngineTraceQuantity = {
   amount: string;
   unit: number;
   dimension: string;
 };
 
-export type TraceRoot = {
-  lot_id: string;
-  identifier: string;
-  item_id?: string;
+export type EngineTraceNode = {
+  lot: string;
+  item: string | null;
+  serial: string | null;
+  location: string | null;
+  posting: number;
+  occurred_at: string | null;
+  quantity: EngineTraceQuantity;
+  edge_quantity: EngineTraceQuantity;
+  amount: string;
+  amount_currency: number;
+  children: EngineTraceNode[];
 };
 
-export type TraceNode = {
-  lot_id: string;
-  identifier: string;
-  item_id?: string;
-  quantity?: AnyQuantity;
-  serials?: string[];
+export type EngineDirectionTrace = {
+  direction: "forward" | "backward";
+  nodes: EngineTraceNode[];
 };
 
-export type TraceEdge = {
-  from_lot_id: string;
-  to_lot_id: string;
-  kind: string;
-  work_order?: string;
-  quantity_in?: AnyQuantity;
-  quantity_out?: AnyQuantity;
-};
-
-export type TraceInline = {
-  root: TraceRoot;
-  nodes: TraceNode[];
-  edges: TraceEdge[];
+export type EngineBothTrace = {
+  backward: EngineDirectionTrace;
+  forward: EngineDirectionTrace;
 };
 
 export type TraceJob = {
@@ -44,4 +39,4 @@ export type TraceJob = {
   result_url: string;
 };
 
-export type TraceResponse = TraceInline | TraceJob;
+export type TraceResponse = EngineDirectionTrace | EngineBothTrace | TraceJob;

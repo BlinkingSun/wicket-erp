@@ -90,5 +90,8 @@ function TraceResult({
       </p>
     );
   }
-  return <GenealogyTrace trace={result} />;
+  if (result.kind === "both" || result.kind === "inline") {
+    return <GenealogyTrace trace={result} />;
+  }
+  return null;
 }

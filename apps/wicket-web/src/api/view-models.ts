@@ -1,31 +1,40 @@
 export type TraceDirection = "forward" | "backward";
 
-export type TraceNodeView = {
-  lotId: string;
-  identifier: string;
-  itemId?: string;
-  quantityLabel?: string;
-  serials: string[];
+export type TraceQuantityView = {
+  amount: string;
+  unit: number;
+  dimension: string;
 };
 
-export type TraceEdgeView = {
-  fromLotId: string;
-  toLotId: string;
-  kind: string;
-  workOrder?: string;
+export type TraceTreeNodeView = {
+  lotId: string;
+  itemId: string | null;
+  serial: string | null;
+  locationId: string | null;
+  posting: number;
+  occurredAt: string | null;
+  quantity: TraceQuantityView;
+  edgeQuantity: TraceQuantityView;
+  amount: string;
+  amountCurrency: number;
+  children: TraceTreeNodeView[];
 };
 
-export type TraceRootView = {
-  lotId: string;
-  identifier: string;
-  itemId?: string;
+export type GenealogyDirectionTraceView = {
+  direction: TraceDirection;
+  nodes: TraceTreeNodeView[];
 };
 
 export type GenealogyTraceView = {
   kind: "inline";
-  root: TraceRootView;
-  nodes: TraceNodeView[];
-  edges: TraceEdgeView[];
+  direction: TraceDirection;
+  nodes: TraceTreeNodeView[];
+};
+
+export type GenealogyBothTraceView = {
+  kind: "both";
+  backward: GenealogyDirectionTraceView;
+  forward: GenealogyDirectionTraceView;
 };
 
 export type GenealogyJobView = {
@@ -34,7 +43,10 @@ export type GenealogyJobView = {
   resultUrl: string;
 };
 
-export type GenealogyResultView = GenealogyTraceView | GenealogyJobView;
+export type GenealogyResultView =
+  | GenealogyTraceView
+  | GenealogyBothTraceView
+  | GenealogyJobView;
 
 export type ItemMasterView = {
   id: string;

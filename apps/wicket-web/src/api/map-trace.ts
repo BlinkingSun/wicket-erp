@@ -1,19 +1,92 @@
-import type { AnyQuantity } from "./types/genealogy";
 import type {
+  GenealogyBothTraceView,
+  GenealogyDirectionTraceView,
   GenealogyResultView,
-  TraceEdgeView,
-  TraceNodeView,
+  TraceQuantityView,
+  TraceTreeNodeView,
 } from "./view-models";
-
-function formatQuantity(quantity: AnyQuantity): string {
-  const trimmed = quantity.amount
-    .replace(/(\.\d*?)0+$/, "$1")
-    .replace(/\.$/, "");
-  return `${trimmed} ${quantity.dimension}`;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function mapQuantity(raw: unknown, field: string): TraceQuantityView {
+  if (!isRecord(raw)) {
+    throw new Error(`Genealogy trace node was missing ${field}.`);
+  }
+  const amount = raw.amount;
+  const dimension = raw.dimension;
+  const unit = raw.unit;
+  if (typeof amount !== "string" || typeof dimension !== "string" || typeof unit !== "number") {
+    throw new Error(`Genealogy trace ${field} was malformed.`);
+  }
+  return { amount, dimension, unit };
+}
+
+function nullableString(raw: unknown, field: string): string | null {
+  if (raw === null) {
+    return null;
+  }
+  if (typeof raw === "string") {
+    return raw;
+  }
+  throw new Error(`Genealogy trace node had invalid ${field}.`);
+}
+
+function mapTreeNode(raw: unknown): TraceTreeNodeView {
+  if (!isRecord(raw) || typeof raw.lot !== "string") {
+    throw new Error("Genealogy trace node was missing lot.");
+  }
+  const amount = raw.amount;
+  if (typeof amount !== "string") {
+    throw new Error("Genealogy trace node was missing amount.");
+  }
+  const amountCurrency = raw.amount_currency;
+  if (typeof amountCurrency !== "number") {
+    throw new Error("Genealogy trace node was missing amount_currency.");
+  }
+  const posting = raw.posting;
+  if (typeof posting !== "number") {
+    throw new Error("Genealogy trace node was missing posting.");
+  }
+
+  const childrenRaw = raw.children;
+  if (!Array.isArray(childrenRaw)) {
+    throw new Error("Genealogy trace node was missing children.");
+  }
+  const children = childrenRaw.map(mapTreeNode);
+
+  return {
+    lotId: raw.lot,
+    itemId: nullableString(raw.item, "item"),
+    serial: nullableString(raw.serial, "serial"),
+    locationId: nullableString(raw.location, "location"),
+    posting,
+    occurredAt: nullableString(raw.occurred_at, "occurred_at"),
+    quantity: mapQuantity(raw.quantity, "quantity"),
+    edgeQuantity: mapQuantity(raw.edge_quantity, "edge_quantity"),
+    amount,
+    amountCurrency,
+    children,
+  };
+}
+
+function mapDirectionBranch(raw: unknown): GenealogyDirectionTraceView {
+  if (!isRecord(raw)) {
+    throw new Error("Genealogy trace branch was not an object.");
+  }
+  const direction = raw.direction;
+  if (direction !== "forward" && direction !== "backward") {
+    throw new Error("Genealogy trace branch was missing direction.");
+  }
+  const nodesRaw = raw.nodes;
+  if (!Array.isArray(nodesRaw)) {
+    throw new Error("Genealogy trace branch was missing nodes.");
+  }
+  return {
+    direction,
+    nodes: nodesRaw.map(mapTreeNode),
+  };
 }
 
 export function mapTraceResponse(data: unknown): GenealogyResultView {
@@ -21,7 +94,7 @@ export function mapTraceResponse(data: unknown): GenealogyResultView {
     throw new Error("Genealogy trace response was not an object.");
   }
 
-  if ("job_id" in data && !("root" in data)) {
+  if ("job_id" in data) {
     const jobId = data.job_id;
     const resultUrl = data.result_url;
     if (typeof jobId !== "string" || typeof resultUrl !== "string") {
@@ -30,66 +103,25 @@ export function mapTraceResponse(data: unknown): GenealogyResultView {
     return { kind: "job", jobId, resultUrl };
   }
 
-  const rootRaw = data.root;
-  const nodesRaw = data.nodes;
-  const edgesRaw = data.edges;
-  if (!isRecord(rootRaw) || !Array.isArray(nodesRaw) || !Array.isArray(edgesRaw)) {
-    throw new Error("Genealogy trace response was missing root, nodes, or edges.");
+  if ("backward" in data && "forward" in data) {
+    const both: GenealogyBothTraceView = {
+      kind: "both",
+      backward: mapDirectionBranch(data.backward),
+      forward: mapDirectionBranch(data.forward),
+    };
+    return both;
   }
 
-  const rootLotId = rootRaw.lot_id;
-  const rootIdentifier = rootRaw.identifier;
-  if (typeof rootLotId !== "string" || typeof rootIdentifier !== "string") {
-    throw new Error("Genealogy trace root was missing lot_id or identifier.");
+  if ("direction" in data && "nodes" in data) {
+    const branch = mapDirectionBranch(data);
+    return {
+      kind: "inline",
+      direction: branch.direction,
+      nodes: branch.nodes,
+    };
   }
 
-  const nodes: TraceNodeView[] = nodesRaw.map((node) => {
-    if (!isRecord(node) || typeof node.lot_id !== "string" || typeof node.identifier !== "string") {
-      throw new Error("Genealogy trace node was missing lot_id or identifier.");
-    }
-    const quantity =
-      isRecord(node.quantity) &&
-      typeof node.quantity.amount === "string" &&
-      typeof node.quantity.dimension === "string"
-        ? formatQuantity(node.quantity as AnyQuantity)
-        : undefined;
-    const serials = Array.isArray(node.serials)
-      ? node.serials.filter((serial): serial is string => typeof serial === "string")
-      : [];
-    return {
-      lotId: node.lot_id,
-      identifier: node.identifier,
-      itemId: typeof node.item_id === "string" ? node.item_id : undefined,
-      quantityLabel: quantity,
-      serials,
-    };
-  });
-
-  const edges: TraceEdgeView[] = edgesRaw.map((edge) => {
-    if (
-      !isRecord(edge) ||
-      typeof edge.from_lot_id !== "string" ||
-      typeof edge.to_lot_id !== "string" ||
-      typeof edge.kind !== "string"
-    ) {
-      throw new Error("Genealogy trace edge was missing from_lot_id, to_lot_id, or kind.");
-    }
-    return {
-      fromLotId: edge.from_lot_id,
-      toLotId: edge.to_lot_id,
-      kind: edge.kind,
-      workOrder: typeof edge.work_order === "string" ? edge.work_order : undefined,
-    };
-  });
-
-  return {
-    kind: "inline",
-    root: {
-      lotId: rootLotId,
-      identifier: rootIdentifier,
-      itemId: typeof rootRaw.item_id === "string" ? rootRaw.item_id : undefined,
-    },
-    nodes,
-    edges,
-  };
+  throw new Error(
+    "Genealogy trace response was not a job, direction trace, or both-direction trace.",
+  );
 }
