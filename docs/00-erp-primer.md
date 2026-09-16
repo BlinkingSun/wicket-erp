@@ -327,3 +327,5 @@ Worth stating plainly before designing anything.
 
 *Next: `01-vision-and-scope.md`, which covers what this project specifically is, who
 it is for, and what it deliberately refuses to do.*
+
+*UI wrapper: `13-ui-wrapper-contract.md`. Agent paste file: `AGENT-UI-CONTEXT.md`.*

@@ -45,6 +45,7 @@ Before touching the kernel, the ledger, or the module contract, half a day of re
 6. **[PLAN.md](PLAN.md)** — the three-wave build, seventeen invariants, and the crate contract.
 7. **[research/README.md](research/README.md)** — where the evidence lives.
 8. **[DESIGN.md](DESIGN.md)** — binding interface rules.
+9. **[docs/13-ui-wrapper-contract.md](docs/13-ui-wrapper-contract.md)** — the HTTP contract a UI wrapper implements; paste-in agent file: [docs/AGENT-UI-CONTEXT.md](docs/AGENT-UI-CONTEXT.md).
 
 ## 5. Building
 
