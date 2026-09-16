@@ -6,6 +6,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+use serde::Serialize;
 use wicket_audit as _;
 
 #[cfg(test)]
@@ -28,9 +29,25 @@ pub use credential::{
 };
 pub use principal::{
     MIGRATION_ID, Principal, PrincipalKind, PrincipalStatus, SYSTEM_ID, create_principal,
-    deactivate_principal, load_principal, load_principal_on, rename_principal, seed_builtins,
+    deactivate_principal, list_principals, load_principal, load_principal_by_username,
+    load_principal_on, rename_principal, seed_builtins,
+};
+pub use rbac::{
+    Role, assign_role, has_permission, list_roles, list_roles_for_principal, load_bundles,
+    load_role_by_name, seed_bundles,
 };
 pub use session::{PasswordProvider, Provider, Session, login, reauth_signing};
+
+/// List envelope for cursor-paginated identity reads.
+#[derive(Debug, Clone, Serialize)]
+pub struct ListBody<T> {
+    /// Page.
+    pub data: Vec<T>,
+    /// Opaque next cursor.
+    pub next_cursor: Option<String>,
+    /// Whether another page exists.
+    pub has_more: bool,
+}
 
 /// Crate error.
 #[derive(Debug, thiserror::Error)]
@@ -77,6 +94,9 @@ pub enum Error {
     /// Role-bundle TOML could not be parsed.
     #[error("role bundle: {0}")]
     Bundle(String),
+    /// Pagination `limit` is outside 1..=200.
+    #[error("invalid limit")]
+    InvalidLimit,
 }
 
 /// Crate result alias.

@@ -70,6 +70,13 @@ pub enum PrincipalStatus {
 }
 
 impl PrincipalStatus {
+    fn as_db(self) -> &'static str {
+        match self {
+            PrincipalStatus::Active => "active",
+            PrincipalStatus::Inactive => "inactive",
+        }
+    }
+
     fn parse(s: &str) -> Result<Self> {
         match s {
             "active" => Ok(Self::Active),
@@ -152,6 +159,83 @@ pub async fn load_principal(pool: &wicket_db::Pool, id: UserId) -> Result<Princi
     .bind(id.as_uuid())
     .fetch_optional(pool)
     .await?;
+    let Some(row) = row else {
+        return Err(Error::NotFound);
+    };
+    row_to_principal(row)
+}
+
+/// List principals with optional kind/status filters (cursor-paginated by id).
+pub async fn list_principals(
+    tx: &mut wicket_db::Tx<'_>,
+    limit: Option<i64>,
+    cursor: Option<&str>,
+    kind: Option<PrincipalKind>,
+    status: Option<PrincipalStatus>,
+) -> Result<crate::ListBody<Principal>> {
+    let limit = limit.unwrap_or(50);
+    if !(1..=200).contains(&limit) {
+        return Err(Error::InvalidLimit);
+    }
+    let cursor_uuid = match cursor {
+        Some(c) if !c.is_empty() => Some(parse_principal_id(c)?),
+        _ => None,
+    };
+    let fetch = limit + 1;
+    let kind_db = kind.map(|k| k.as_db());
+    let status_db = status.map(|s| s.as_db());
+    let rows: Vec<PrincipalRow> = tx
+        .fetch_all(
+            sql_query_as(
+                r#"SELECT id, kind, username, display_name, status, created_at, deactivated_at
+                     FROM identity.principal
+                    WHERE ($1::text IS NULL OR kind = $1)
+                      AND ($2::text IS NULL OR status = $2)
+                      AND ($3::uuid IS NULL OR id > $3)
+                    ORDER BY id
+                    LIMIT $4"#,
+            )
+            .bind(kind_db)
+            .bind(status_db)
+            .bind(cursor_uuid)
+            .bind(fetch),
+        )
+        .await
+        .map_err(map_tx)?;
+    let has_more = rows.len() as i64 > limit;
+    let page: Vec<Principal> = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(row_to_principal)
+        .collect::<Result<Vec<_>>>()?;
+    let next = if has_more {
+        page.last().map(|p| p.id)
+    } else {
+        None
+    };
+    Ok(crate::ListBody {
+        data: page,
+        next_cursor: next.map(|id| id.as_uuid().to_string()),
+        has_more,
+    })
+}
+
+/// Look up a principal by username (case-insensitive).
+pub async fn load_principal_by_username(
+    tx: &mut wicket_db::Tx<'_>,
+    username: &str,
+) -> Result<Principal> {
+    let row: Option<PrincipalRow> = tx
+        .fetch_optional(
+            sql_query_as(
+                r#"SELECT id, kind, username, display_name, status, created_at, deactivated_at
+                     FROM identity.principal
+                    WHERE lower(username) = lower($1)"#,
+            )
+            .bind(username),
+        )
+        .await
+        .map_err(map_tx)?;
     let Some(row) = row else {
         return Err(Error::NotFound);
     };
@@ -281,6 +365,10 @@ pub async fn display_name_at(
         Some((name,)) => Ok(name),
         None => Err(Error::NotFound),
     }
+}
+
+fn parse_principal_id(s: &str) -> Result<Uuid> {
+    uuid::Uuid::parse_str(s).map_err(|e| Error::Core(wicket_core::Error::Invariant(e.to_string())))
 }
 
 pub(crate) fn row_to_principal(row: PrincipalRow) -> Result<Principal> {
