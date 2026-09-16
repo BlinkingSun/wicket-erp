@@ -92,7 +92,7 @@ the wire. None of it is new functionality.
 | T-32 | Remaining machine edges | M | T-24 | Item obsolete, work-order cancel, and the document lifecycle edges each have an operation with optimistic concurrency |
 | T-33 | Job status, enqueue and cancel | M | T-24 | A job identifier returned by a trace resolves. Today `modules/genealogy` returns one into a route that does not exist |
 | T-34 | Kernel administration over HTTP | L | T-24 | Module registry, principals and roles, numbering, units of measure, and audit verification and export are reachable without linking the crate |
-| T-35 | **NEXT — gates the UI.** Document schemas and per-edge signature meaning | L | T-25 | Every operation carries request and response schemas; the signature meaning equals the edge's own meaning rather than the literal constant stamped on every transition today (`crates/wicket-server/src/openapi.rs:465-470`) |
+| T-35 | **Wave 0 DONE** (inputs described; signature meaning truthful). Typed bodies remain, gated on the schemars RFC. Document schemas and per-edge signature meaning | L | T-25 | Every operation carries request and response schemas; the signature meaning equals the edge's own meaning rather than the literal constant stamped on every transition today (`crates/wicket-server/src/openapi.rs:465-470`) |
 | T-36 | Cursor pagination and filtering on list operations | M | T-30 | Limit and cursor are honoured; no handler hard-codes a null cursor on a non-empty page |
 | T-37 | Rate limit and method-not-allowed envelope | S | — | The documented burst limit returns its error code, and an unsupported method returns the envelope. Both are specified in `docs/10-api-conventions.md` and neither is implemented |
 | T-38 | CLI twin table and allowlist | M | T-34 | Every subcommand except process lifecycle has an operation or an allowlist row with a reason |
@@ -102,6 +102,26 @@ the wire. None of it is new functionality.
 | T-42 | Ledger reversal, balance and projection verification | M | T-31 | No public ledger operation remains without a row or an allowlist entry |
 | T-43 | **The Goal 2 gate: capability coverage test** | M | T-24, T-38 | Boots both profiles, walks engine edges, job kinds, module routes and CLI subcommands against the table, and fails on any capability with no row and no allowlist entry |
 | T-44 | **DONE.** Golden OpenAPI fixture fails the build on path drift | S | T-23 | Closed 2026-09-15. `crates/wicket-server/tests/fixtures/openapi-operations.txt` holds the 57 **operations**, and `scripts/lint-openapi-fixture.sh` (wired into `just ci`) set-diffs it against the capability table, naming extras and missings. `just openapi-fixture` regenerates and is never a `ci` dependency; every sort is `LC_ALL=C` so regeneration is byte-stable across locales. The fixture keys on `(method, path)`, **not** paths: 57 operations span only 48 unique paths because 9 paths carry two methods, so a path-keyed fixture would miss method drift. A slice test also diffs the **served** document against the same fixture. The self-referential parity test named below is kept — its live-router bare-404 probe is independent — but it is no longer the only check |
+
+---
+
+### T-35 progress (2026-09-15)
+
+**Wave 0 landed** (`10bf296`): 31 path parameters, 19 query fields from the handler structs, and
+required headers declared **per route** — there is no `CapabilityKind`-based rule, and asserting
+one was wrong in both directions. Signature meaning now reads the frozen engine
+(`state.kernel().profile.signature_edges`), so `document(&AppState)` finally uses its state.
+
+The document had stamped `meaning: "Released"` on all 10 transitions in **both** profiles. The
+truth is **0 signed rows on `plain-shop`** and **3 on `regulated-device`** — every signature
+claim in the plain-shop document was false, which for a Part 11 product is a claim a client would
+have acted on. `setLotStatus` is omitted by id: it joins `(lot, release)` with
+`releaseFromQuarantine`, but its handler also serves `hold` and `reject`.
+
+**Wave 1 (typed request/response bodies) is gated on the `schemars` allow-list RFC** — GOV-7
+requires an accepted request for comment plus the allow-list edit in the same change. Decision
+recorded in ADR 0011. Residual from Wave 0: the header allowlists are hand-maintained and can
+drift from handlers; a derivation or a drift test is a follow-up.
 
 ---
 
