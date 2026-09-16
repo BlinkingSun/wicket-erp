@@ -28,7 +28,8 @@ pub use events::{COMPLETED, WORK_ORDER_RELEASED, register_schemas};
 pub use hooks::register as register_hooks;
 pub use states::work_order_machine;
 pub use store::{
-    complete, create, issue_material, list, load, load_completion, load_issue_lines, release, start,
+    complete, create, issue_material, list, load, load_completion, load_issue_lines, release,
+    resolve, start,
 };
 
 use wicket_db::Tx;

@@ -641,6 +641,29 @@ pub async fn load(tx: &mut Tx<'_>, id: Identifier) -> Result<WorkOrder> {
     }
 }
 
+/// Resolve a work-order number to its id.
+///
+/// Relies on `UNIQUE INDEX work_order_number_uidx ON production_min.work_order
+/// (number) WHERE number IS NOT NULL`
+/// (`modules/production_min/migrations/00000000000001_production_min.up.sql:55-57`).
+/// Comparison is exact and **case-sensitive**: there is no `lower(number)`
+/// index. Draft work orders have a NULL number and are therefore invisible to
+/// lookup — that is correct behaviour (a draft has nothing to scan).
+///
+/// A miss is [`Error::NotFound`], not a panic and not `None`.
+pub async fn resolve(tx: &mut Tx<'_>, number: &str) -> Result<Identifier> {
+    let row: Option<(Uuid,)> = tx
+        .fetch_optional(
+            sqlx::query_as("SELECT id FROM production_min.work_order WHERE number = $1")
+                .bind(number),
+        )
+        .await?;
+    match row {
+        Some((id,)) => Ok(Identifier::from_uuid(id)),
+        None => Err(Error::NotFound),
+    }
+}
+
 /// Cursor-paginated list. Default sort is `id` ascending.
 pub async fn list(tx: &mut Tx<'_>, filter: ListFilter) -> Result<Page<WorkOrder>> {
     let limit = filter.limit.unwrap_or(DEFAULT_LIMIT);

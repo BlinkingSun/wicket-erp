@@ -113,6 +113,26 @@ pub async fn get(pool: &Pool, id: ItemId) -> Result<Item> {
     }
 }
 
+/// Resolve an item number to its [`ItemId`].
+///
+/// Relies on `CONSTRAINT item_number_unique UNIQUE (number)`
+/// (`modules/items/migrations/00000000000001_items.up.sql:50`). Comparison is
+/// exact and **case-sensitive**: there is no `lower(number)` index, so
+/// `MDS-450` and `mds-450` are different rows. Do not add a `lower()`
+/// comparison, which would find a row the unique index does not consider a
+/// duplicate.
+///
+/// A miss is [`Error::UnknownNumber`], not a panic and not `None`.
+pub async fn resolve(tx: &mut Tx<'_>, number: &str) -> Result<ItemId> {
+    let row: Option<(Uuid,)> = tx
+        .fetch_optional(sqlx::query_as("SELECT id FROM items.item WHERE number = $1").bind(number))
+        .await?;
+    match row {
+        Some((id,)) => Ok(ItemId::from_uuid(id)),
+        None => Err(Error::UnknownNumber(number.to_owned())),
+    }
+}
+
 /// Cursor-paginated list. Default sort is `id` ascending (UUID v7 create order).
 pub async fn list(pool: &Pool, filter: ListFilter) -> Result<Page<Item>> {
     let limit = filter.limit.unwrap_or(DEFAULT_LIMIT);

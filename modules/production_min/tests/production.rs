@@ -11,7 +11,7 @@ use wicket_db::Tx;
 use wicket_ledger::{TraceStart, trace_forward};
 use wicket_mod_production_min::{
     CompleteRequest, CreateWorkOrder, FinishedLotTemplate, IssueMaterialRequest, StartRequest,
-    Status, complete, create, load, load_completion, start,
+    Status, complete, create, load, load_completion, resolve, start,
 };
 use wicket_test::db_case;
 
@@ -55,6 +55,65 @@ async fn release_allocates_gap_free_number_late() {
     let ta = trailing_int(&na);
     let tb = trailing_int(&nb);
     assert_eq!(tb, ta + 1, "gap-free: {na} then {nb}");
+    db.finish().await.expect("finish");
+}
+
+#[tokio::test]
+async fn resolve_work_order_number_is_exact_case_sensitive_and_skips_drafts() {
+    let db = db_case!("prod_by_num");
+    let kernel = boot_kernel(&db).await;
+    let w = seed_world(&db, kernel).await;
+    let pool = write_pool(&db);
+
+    let draft = create_wo(&w, &pool).await;
+    assert!(
+        draft.number.is_none(),
+        "drafts have a NULL number and are invisible to lookup"
+    );
+    let ctx = action_ctx(w.actor, "production.view");
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin draft miss");
+    let draft_err = resolve(&mut tx, "WO-0001")
+        .await
+        .expect_err("unreleased draft is not found by number");
+    assert!(
+        matches!(draft_err, wicket_mod_production_min::Error::NotFound),
+        "got {draft_err:?}"
+    );
+    tx.commit().await.expect("commit draft miss");
+
+    let released = release_wo(&w, &pool, draft.id).await;
+    let number = released.number.expect("number allocated at release");
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin exact");
+    let id = resolve(&mut tx, &number).await.expect("exact");
+    assert_eq!(id, released.id);
+
+    let folded = number.to_ascii_lowercase();
+    assert_ne!(folded, number, "allocated number must not be all-lowercase");
+    let case_err = resolve(&mut tx, &folded)
+        .await
+        .expect_err("case-sensitive unique: lowercased number must not match");
+    assert!(
+        matches!(case_err, wicket_mod_production_min::Error::NotFound),
+        "got {case_err:?}"
+    );
+
+    let miss = resolve(&mut tx, "NO-SUCH-WO")
+        .await
+        .expect_err("unknown number");
+    assert!(
+        matches!(miss, wicket_mod_production_min::Error::NotFound),
+        "got {miss:?}"
+    );
+    tx.commit().await.expect("commit exact");
+
+    let still_draft = create_wo(&w, &pool).await;
+    assert!(still_draft.number.is_none());
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin after draft");
+    let still = resolve(&mut tx, &number)
+        .await
+        .expect("released number still resolves");
+    assert_eq!(still, released.id);
+    tx.commit().await.expect("commit after draft");
     db.finish().await.expect("finish");
 }
 

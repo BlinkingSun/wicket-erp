@@ -25,7 +25,7 @@ pub use api::{ROUTES, error_code, http_status, openapi_document};
 pub use domain::{DOC_TYPE, Item, Kind, ListFilter, NewItem, Page, Status, UpdateItem};
 pub use error::{Error, Result};
 pub use states::item_machine;
-pub use store::{create, get, list, obsolete, release, update};
+pub use store::{create, get, list, obsolete, release, resolve, update};
 
 use wicket_module::{KernelBuilder, ModuleManifest, Profile};
 

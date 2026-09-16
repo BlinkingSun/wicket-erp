@@ -51,6 +51,9 @@ pub enum Error {
     /// Item was not found.
     #[error("item not found: {0}")]
     NotFound(ItemId),
+    /// Item number `{0}` is not registered (`item_number_unique` is case-sensitive).
+    #[error("unknown item number {0}")]
+    UnknownNumber(String),
     /// Optimistic version did not match.
     #[error("version conflict")]
     VersionConflict,
@@ -84,7 +87,7 @@ impl Error {
     pub fn code(&self) -> &'static str {
         match self {
             Error::DuplicateNumber | Error::VersionConflict => "CONFLICT",
-            Error::NotFound(_) => "NOT_FOUND",
+            Error::NotFound(_) | Error::UnknownNumber(_) => "NOT_FOUND",
             Error::InvalidNumber
             | Error::ClientMintedId
             | Error::InvalidLimit

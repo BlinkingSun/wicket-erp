@@ -10,7 +10,7 @@ use wicket_db::Tx;
 use wicket_ledger::{has_postings, load_stock_item};
 use wicket_mod_items::domain::number_is_valid;
 use wicket_mod_items::{
-    Kind, ListFilter, Status, UpdateItem, create, get, list, obsolete, release, update,
+    Kind, ListFilter, Status, UpdateItem, create, get, list, obsolete, release, resolve, update,
 };
 use wicket_test::db_case;
 
@@ -429,5 +429,42 @@ async fn duplicate_number_is_conflict() {
     assert_eq!(err.code(), "CONFLICT", "docs/10 uniqueness is 409 CONFLICT");
     assert_eq!(wicket_mod_items::error_code(&err), "CONFLICT");
     tx.rollback().await.expect("rollback");
+    db.finish().await.expect("finish");
+}
+
+#[tokio::test]
+async fn resolve_item_number_is_exact_and_case_sensitive() {
+    let db = db_case!("items_by_num");
+    let kernel = boot_kernel(&db).await;
+    let write = write_pool(&db);
+    let actor = actor_with_item_perms(&write).await;
+    let mut tx = Tx::begin(&write, &create_ctx(actor)).await.expect("begin");
+    let item = create(&mut tx, &kernel, screw()).await.expect("create");
+    let id = resolve(&mut tx, &item.number).await.expect("exact");
+    assert_eq!(id, item.id);
+
+    let folded = item.number.to_ascii_lowercase();
+    assert_ne!(
+        folded, item.number,
+        "fixture must mix case so the miss is real"
+    );
+    let case_err = resolve(&mut tx, &folded)
+        .await
+        .expect_err("case-sensitive unique: lowercased number must not match");
+    assert!(
+        matches!(case_err, wicket_mod_items::Error::UnknownNumber(_)),
+        "got {case_err:?}"
+    );
+    assert_eq!(case_err.code(), "NOT_FOUND");
+
+    let miss = resolve(&mut tx, "NO-SUCH-ITEM")
+        .await
+        .expect_err("unknown number");
+    assert!(
+        matches!(miss, wicket_mod_items::Error::UnknownNumber(_)),
+        "got {miss:?}"
+    );
+    assert_eq!(miss.code(), "NOT_FOUND");
+    tx.commit().await.expect("commit");
     db.finish().await.expect("finish");
 }
