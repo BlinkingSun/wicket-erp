@@ -66,11 +66,23 @@ prove the public contract did not change. A committed full-document fixture, gen
 same derive path and diffed in `just ci`, is the T-44-shaped review gate on that. It is a review
 signal, not a second source of truth.
 
-**The orphan rule bounds the first wave.** `JsonSchema` can only be derived where the type is
-defined, so a response type owned by a `modules/*` crate cannot be given a schema from
-`wicket-server`. The first wave therefore covers operations whose response types already live in
-`wicket-server`. Extending schemas to module-owned types means adding the derive to those crates,
-which is a wider dependency footprint and a separate decision.
+**The orphan rule decides where the derive lives — amended 2026-09-16.** `JsonSchema` can only
+be derived where the type is defined. The response types of the operations that matter —
+`ItemBody`, `LotBody`, `TraceBody`, `Tree`, `Impact`, `JobStatus` — live in `modules/items`,
+`modules/lots`, `modules/genealogy` and `wicket-jobs`, so `wicket-server` cannot give them
+schemas. Restricting the first wave to `wicket-server`-owned types would schema the session shell
+and `getOnHand` and leave every operation the approved mockups press untyped.
+
+**Therefore `schemars` is added to the crates that own the types**, and the derive sits on the
+type itself. The two alternatives were rejected: duplicating each DTO inside `handlers/` and
+deriving on the copy contradicts this ADR's own "both are the same Rust type" and reintroduces
+the drift it exists to prevent; a separate crate of schema wrappers hits the `AGENTS.md` ban on
+new crates while Goal 2 is false.
+
+The cost is stated plainly: `schemars` reaches four more crates than the original decision
+implied. That is the price of the derive-don't-duplicate rule, and it is cheaper than a second
+hand-maintained catalogue of shapes. Kernel wire primitives (`AnyQuantity`, `MoneyWire`) and the
+typed ids in `wicket-core` remain **excluded** — their encodings are hand-specified in `docs/10`.
 
 **Reversal cost.** Moderate and bounded: the derives come off, the `$ref` match becomes literal
 JSON, and the document shape is unchanged. This is recorded as an ADR because the decision
