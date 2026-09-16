@@ -91,7 +91,7 @@ fn principal_wire(p: &Principal) -> PrincipalBody {
 }
 
 fn principal_body(p: &Principal) -> Value {
-    serde_json::to_value(&principal_wire(p)).expect("PrincipalBody")
+    serde_json::to_value(principal_wire(p)).expect("PrincipalBody")
 }
 
 /// GET `/api/v1/identity/roles` (and role read) body.
@@ -692,7 +692,7 @@ async fn get_role_by_name_inner(
     .await?;
     let role = wicket_identity::load_role_by_name(&mut tx, name).await;
     tx.rollback().await?;
-    Ok(serde_json::to_value(&role_wire(
+    Ok(serde_json::to_value(role_wire(
         &role.map_err(map_identity)?,
     ))?)
 }

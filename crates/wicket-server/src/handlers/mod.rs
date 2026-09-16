@@ -625,7 +625,7 @@ async fn resolve_item_inner(
     let id = wicket_mod_items::resolve(&mut tx, number).await;
     tx.rollback().await?;
     let id = id.map_err(map_items_err)?;
-    Ok(serde_json::to_value(&ResolveIdBody { id: id.to_string() })?)
+    Ok(serde_json::to_value(ResolveIdBody { id: id.to_string() })?)
 }
 
 /// PATCH `/api/v1/items/{id}` body.
@@ -2166,7 +2166,7 @@ async fn resolve_work_order_inner(
     let id = wicket_mod_production_min::resolve(&mut tx, number).await;
     tx.rollback().await?;
     let id = id.map_err(map_production_err)?;
-    Ok(serde_json::to_value(&ResolveIdBody { id: id.to_string() })?)
+    Ok(serde_json::to_value(ResolveIdBody { id: id.to_string() })?)
 }
 
 /// POST .../release
