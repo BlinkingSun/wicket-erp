@@ -7,7 +7,7 @@ use uuid::Uuid;
 use wicket_core::{
     AnyQuantity, AreaDim, Boundary, ConversionContext, CostElement, CountDim, DimensionKind,
     GroupKind, Identifier, ItemId, LengthDim, LocationId, LotId, MassDim, Money, NoPostings,
-    PostingGroupHeader, PostingIntent, PostingSink, QuantityPosting, TimeDim, ValueAccount,
+    PostingGroupHeader, PostingIntent, PostingSink, QuantityPosting, TimeDim, UnitId, ValueAccount,
     ValuePosting, VolumeDim,
 };
 use wicket_db::Tx;
@@ -528,36 +528,85 @@ pub async fn customer_return(
 }
 
 /// On-hand as the ledger fold (`wicket_ledger::balance_at`). No stored balance.
+///
+/// `balance_at` treats `lot: None` as untracked postings only (`lot_id IS NULL`),
+/// not "any lot". Item-level (and location-level) queries with `lot: None` must
+/// therefore add each open lot's fold on top of the untracked slice.
 pub async fn on_hand(tx: &mut Tx<'_>, query: BalanceQuery) -> Result<Decimal> {
     let stock = load_stock_item(tx, query.item).await?;
     let instant = Utc::now();
     if let Some(location) = query.location {
-        return Ok(wicket_ledger::balance_at(
+        return on_hand_at(
             tx,
-            BalanceSlice {
-                item: query.item,
-                location,
-                lot: query.lot,
-                serial: None,
-                unit: stock.stock_uom,
-            },
+            query.item,
+            location,
+            query.lot,
+            stock.stock_uom,
             instant,
         )
-        .await?);
+        .await;
     }
     let mut total = Decimal::ZERO;
     for loc in wicket_mod_locations::list_flat(tx).await? {
         if loc.boundary_class.is_some() {
             continue;
         }
+        total += on_hand_at(tx, query.item, loc.id, query.lot, stock.stock_uom, instant).await?;
+    }
+    Ok(total)
+}
+
+async fn on_hand_at(
+    tx: &mut Tx<'_>,
+    item: ItemId,
+    location: LocationId,
+    lot: Option<LotId>,
+    unit: UnitId,
+    instant: chrono::DateTime<Utc>,
+) -> Result<Decimal> {
+    if lot.is_some() {
+        return Ok(wicket_ledger::balance_at(
+            tx,
+            BalanceSlice {
+                item,
+                location,
+                lot,
+                serial: None,
+                unit,
+            },
+            instant,
+        )
+        .await?);
+    }
+    let mut total = wicket_ledger::balance_at(
+        tx,
+        BalanceSlice {
+            item,
+            location,
+            lot: None,
+            serial: None,
+            unit,
+        },
+        instant,
+    )
+    .await?;
+    let layers = load_open_layers(tx, item, location).await?;
+    let mut seen = std::collections::HashSet::new();
+    for layer in layers {
+        let Some(lot) = layer.lot else {
+            continue;
+        };
+        if !seen.insert(lot) {
+            continue;
+        }
         total += wicket_ledger::balance_at(
             tx,
             BalanceSlice {
-                item: query.item,
-                location: loc.id,
-                lot: query.lot,
+                item,
+                location,
+                lot: Some(lot),
                 serial: None,
-                unit: stock.stock_uom,
+                unit,
             },
             instant,
         )

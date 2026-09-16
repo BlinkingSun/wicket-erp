@@ -463,6 +463,103 @@ async fn on_hand_equals_ledger_fold_after_every_document() {
     db.finish().await.expect("finish");
 }
 
+/// GET /api/v1/inventory/on-hand?item_id=X is this query: lot None, location None.
+#[tokio::test]
+async fn item_level_on_hand_includes_lot_tracked_stock() {
+    let db = db_case!("inv_oh_item");
+    let kernel = boot_kernel(&db).await;
+    let w = seed_world(&db, kernel).await;
+    let pool = write_pool(&db);
+    receive_bars(&w, &pool).await;
+    release_lot(&w, &pool).await;
+    let ctx = action_ctx(&w, "inventory.receive");
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin untracked");
+    receive(
+        &mut tx,
+        &w.kernel,
+        &ctx,
+        ReceiveRequest {
+            to_location: w.available,
+            reference: Some("untracked".into()),
+            lines: vec![line(w.bar, qty_ft("1.0000"), None, Some(usd("2.36")))],
+            expected: None,
+            tolerance: None,
+            idempotency_key: Some(uuid::Uuid::now_v7()),
+        },
+    )
+    .await
+    .expect("untracked receive");
+    tx.commit().await.expect("commit untracked");
+
+    let ctx = action_ctx(&w, "inventory.view");
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin view");
+    let item_q = BalanceQuery {
+        item: w.bar,
+        location: None,
+        lot: None,
+    };
+    let on = on_hand(&mut tx, item_q).await.expect("on_hand");
+    let avail = available(&mut tx, item_q).await.expect("available");
+    let lot_on = on_hand(
+        &mut tx,
+        BalanceQuery {
+            item: w.bar,
+            location: None,
+            lot: Some(w.lot_bar),
+        },
+    )
+    .await
+    .expect("lot on_hand");
+    assert_eq!(
+        lot_on,
+        dec("2000.0000"),
+        "named-lot on_hand is the lot only"
+    );
+    assert_eq!(
+        on,
+        dec("2001.0000"),
+        "item-level on_hand (lot: None) must sum lots plus untracked"
+    );
+    assert_eq!(
+        avail,
+        dec("2001.0000"),
+        "available already sums lots at item level"
+    );
+    tx.commit().await.ok();
+    db.finish().await.expect("finish");
+}
+
+/// Quarantine lots count toward on-hand and not toward available.
+#[tokio::test]
+async fn item_level_on_hand_includes_quarantine_lots_available_does_not() {
+    let db = db_case!("inv_oh_q");
+    let kernel = boot_kernel(&db).await;
+    let w = seed_world(&db, kernel).await;
+    let pool = write_pool(&db);
+    receive_bars(&w, &pool).await;
+    let ctx = action_ctx(&w, "inventory.view");
+    let mut tx = Tx::begin(&pool, &ctx).await.expect("begin view");
+    let item_q = BalanceQuery {
+        item: w.bar,
+        location: None,
+        lot: None,
+    };
+    let on = on_hand(&mut tx, item_q).await.expect("on_hand");
+    let avail = available(&mut tx, item_q).await.expect("available");
+    assert_eq!(
+        on,
+        dec("2000.0000"),
+        "item-level on_hand includes quarantined lots"
+    );
+    assert_eq!(
+        avail,
+        dec("0"),
+        "available still excludes non-Available lot status"
+    );
+    tx.commit().await.ok();
+    db.finish().await.expect("finish");
+}
+
 #[tokio::test]
 async fn posting_without_actor_aborts_and_leaves_no_document() {
     let db = db_case!("inv_no_actor");
