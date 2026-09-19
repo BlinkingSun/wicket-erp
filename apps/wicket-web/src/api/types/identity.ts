@@ -9,3 +9,19 @@ export type OwnProfileBodyWire = {
   created_at: string;
   deactivated_at: string | null;
 };
+
+/** Throwaway wire type for POST /api/v1/identity/login. */
+
+export type LoginBodyWire = {
+  session_id: string;
+  principal_id: string;
+  display_name: string;
+  csrf: string;
+};
+
+/** Throwaway wire type for GET /api/v1/navigation. */
+
+export type NavigationBodyWire = {
+  visible: string[];
+  hidden: string[];
+};
