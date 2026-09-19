@@ -19,7 +19,7 @@ the item is real.
 **Stage 0 is the contribution product, and it comes first.** It needs no decision
 from the owner. It stops documents from lying to contributors now. Do it first.
 Most of Stage 0 landed in the 2026-09-14 swarm. T-01 and T-17 closed 2026-09-15.
-**Remaining: T-13 (licence-identifier backfill).**
+**Remaining: T-13 (licence-identifier backfill) and T-105 (lint the npm allowlists).**
 
 **Stage 1 is the keystone, and it is blocked on accepting
 [ADR 0010](docs/adr/0010-one-registry.md).** Seven separate items from four analyses
@@ -55,6 +55,8 @@ that are currently false.
 | T-16 | **DONE.** The build file describes a passing recipe as expected to fail | S | `justfile` no longer says ci-db is "expected RED until harness lands". Public CI's `just ci-db` is green |
 | T-17 | **DONE.** Repository settings contradict the merge policy | S | GitHub `allow_squash_merge` is false, matching `CONTRIBUTING.md` §7 and `GOALS.md` GOV-5. Branch protection on `main` either enforces fast-forward or is recorded as ABSENT. Private vulnerability reporting is on, or `SECURITY.md:9-11` states it is off (see T-01). Closed 2026-09-15: `allow_squash_merge` and `allow_rebase_merge` set false; private vulnerability reporting enabled; `CONTRIBUTING.md` §7 and `SECURITY.md` updated to match. Two residuals recorded rather than hidden: `allow_merge_commit` stays true because GitHub refuses to disable every merge strategy (it is the only one that does not rewrite signed commits), and branch protection on `main` is **ABSENT** because GitHub has no fast-forward-only mode |
 | T-18 | **DONE.** One writer per file per wave | S | `CONTRIBUTING.md` §7 and `AGENTS.md` state one writer per file per wave. Historical `integrate: merge` overlapping-ownership commits remain in git history; new waves must not add more |
+| T-105 | **Lint the npm allowlists** | S | A script fails when `apps/wicket-web/package.json` gains a `dependencies` entry without an accepted request for comment, and when a `devDependencies` entry is imported by shipped code. GOV-7. ABSENT |
+| T-106 | **Drop the npm peer-resolution escape hatch** | S | `apps/wicket-web/.npmrc` no longer sets `legacy-peer-deps`, because `openapi-typescript` declares a peer range that includes the TypeScript major this app is on. Until then peer resolution is off workspace-wide |
 
 ---
 
