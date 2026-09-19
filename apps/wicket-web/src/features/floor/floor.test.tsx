@@ -1,11 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRouter,
+} from "@tanstack/react-router";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseWorkOrderBody } from "../../api/map-work-order";
 import type { ItemMasterView, WorkOrderView } from "../../api/view-models";
 import { UNBACKED_FLOOR } from "../../api/view-models";
-import { ShopFloorTerminal } from "./ShopFloorTerminal";
+import { routeTree } from "../../router";
+import { TRAVELER_SCAN_MESSAGE } from "./ScanField";
 import {
   GAGE_REASON,
   REPORT_QTY_REASON,
@@ -42,6 +48,7 @@ vi.mock("../../api/client", () => ({
   getWorkOrder: vi.fn(),
   getItem: vi.fn(),
   getOwnProfile: vi.fn(),
+  listWorkOrders: vi.fn(),
 }));
 
 import { getItem, getOwnProfile, getWorkOrder } from "../../api/client";
@@ -51,15 +58,24 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function renderTerminal(workOrderId?: string) {
+async function renderTerminal(workOrderId?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const path = workOrderId
+    ? `/floor/work-orders/${workOrderId}`
+    : "/floor";
+  const router = createRouter({
+    routeTree,
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  const view = render(
     <QueryClientProvider client={queryClient}>
-      <ShopFloorTerminal workOrderId={workOrderId} />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
+  await screen.findByLabelText("Scan traveler or badge");
+  return view;
 }
 
 function visibleCopy(container: HTMLElement): string {
@@ -98,15 +114,15 @@ describe("shop-floor terminal", () => {
   });
 
   it("renders the header from a mocked getWorkOrder", async () => {
-    vi.mocked(getWorkOrder).mockResolvedValueOnce(sampleWorkOrder);
-    vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
-    vi.mocked(getOwnProfile).mockResolvedValueOnce({
+    vi.mocked(getWorkOrder).mockResolvedValue(sampleWorkOrder);
+    vi.mocked(getItem).mockResolvedValue(sampleItem);
+    vi.mocked(getOwnProfile).mockResolvedValue({
       id: "01932c5a-8b10-7001-8000-000000000099",
       username: "atester",
       displayName: "A. Tester",
     });
 
-    renderTerminal(sampleWorkOrder.id);
+    await renderTerminal(sampleWorkOrder.id);
 
     expect(await screen.findByRole("heading", { name: "WO-1042" })).toBeInTheDocument();
     expect(screen.getByText("In Process")).toHaveClass("status-pill");
@@ -121,10 +137,10 @@ describe("shop-floor terminal", () => {
   });
 
   it("shows the identifier-lookup message on scan submit and echoes the input", async () => {
-    vi.mocked(getOwnProfile).mockRejectedValueOnce(new Error("unauthenticated"));
+    vi.mocked(getOwnProfile).mockRejectedValue(new Error("unauthenticated"));
     const user = userEvent.setup();
 
-    renderTerminal();
+    await renderTerminal();
 
     const scan = screen.getByLabelText("Scan traveler or badge");
     expect(scan).toHaveAttribute("title", SCAN_LOOKUP_UNAVAILABLE);
@@ -132,19 +148,23 @@ describe("shop-floor terminal", () => {
     await user.type(scan, "WO-1042");
     await user.click(screen.getByRole("button", { name: "TAP OR SCAN" }));
 
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      TRAVELER_SCAN_MESSAGE,
+    );
     const note = await screen.findByRole("status");
     expect(note).toHaveAttribute("id", "floor-scan-note");
     expect(note).toHaveClass("floor-sr-only");
     expect(note.textContent).toContain('Received "WO-1042"');
     expect(note.textContent).toContain(SCAN_LOOKUP_UNAVAILABLE);
+    expect(getWorkOrder).not.toHaveBeenCalled();
   });
 
   it("disables each unbacked control and labels what it needs", async () => {
-    vi.mocked(getWorkOrder).mockResolvedValueOnce(sampleWorkOrder);
-    vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
-    vi.mocked(getOwnProfile).mockRejectedValueOnce(new Error("unauthenticated"));
+    vi.mocked(getWorkOrder).mockResolvedValue(sampleWorkOrder);
+    vi.mocked(getItem).mockResolvedValue(sampleItem);
+    vi.mocked(getOwnProfile).mockRejectedValue(new Error("unauthenticated"));
 
-    renderTerminal(sampleWorkOrder.id);
+    await renderTerminal(sampleWorkOrder.id);
     await screen.findByRole("heading", { name: "WO-1042" });
 
     const clockOn = screen.getByRole("button", { name: "CLOCK ON" });
@@ -217,15 +237,15 @@ describe("shop-floor terminal", () => {
   });
 
   it("exposes no operation identifier in visible copy", async () => {
-    vi.mocked(getWorkOrder).mockResolvedValueOnce(sampleWorkOrder);
-    vi.mocked(getItem).mockResolvedValueOnce(sampleItem);
-    vi.mocked(getOwnProfile).mockResolvedValueOnce({
+    vi.mocked(getWorkOrder).mockResolvedValue(sampleWorkOrder);
+    vi.mocked(getItem).mockResolvedValue(sampleItem);
+    vi.mocked(getOwnProfile).mockResolvedValue({
       id: "01932c5a-8b10-7001-8000-000000000099",
       username: "atester",
       displayName: "A. Tester",
     });
 
-    const { container } = renderTerminal(sampleWorkOrder.id);
+    const { container } = await renderTerminal(sampleWorkOrder.id);
     await screen.findByRole("heading", { name: "WO-1042" });
     await screen.findByText("A. Tester");
 
