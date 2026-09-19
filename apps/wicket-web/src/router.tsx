@@ -5,16 +5,35 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import type { TraceQueryDirection } from "./api/view-models";
+import { LoginScreen } from "./features/auth/LoginScreen";
+import { RootWithSession } from "./features/auth/RootWithSession";
+import { hasSession, hydrateSessionFromCookie } from "./features/auth/session";
+import { WorkOrderList } from "./features/floor/WorkOrderList";
 import { ShopFloorTerminal } from "./features/floor/ShopFloorTerminal";
+import { LotPicker } from "./features/genealogy/LotPicker";
 import { GenealogyScreen } from "./features/genealogy/GenealogyScreen";
+import { ItemList } from "./features/items/ItemList";
 import { ItemMasterScreen } from "./features/items/ItemMasterScreen";
 import { FloorHome, FloorLayout } from "./modes/floor-layout";
 import { OfficeHome, OfficeLayout } from "./modes/office-layout";
 import { QualityLayout } from "./modes/quality-layout";
-import { RootLayout } from "./modes/root-layout";
+
+function requireSession(location: {
+  pathname: string;
+  searchStr: string;
+}): void {
+  hydrateSessionFromCookie();
+  if (hasSession()) {
+    return;
+  }
+  throw redirect({
+    to: "/login",
+    search: { next: `${location.pathname}${location.searchStr}` },
+  });
+}
 
 const rootRoute = createRootRoute({
-  component: RootLayout,
+  component: RootWithSession,
 });
 
 const indexRoute = createRoute({
@@ -25,9 +44,28 @@ const indexRoute = createRoute({
   },
 });
 
+type LoginSearch = {
+  next?: string;
+};
+
+const loginRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/login",
+  validateSearch: (search: Record<string, unknown>): LoginSearch => ({
+    next: typeof search.next === "string" ? search.next : undefined,
+  }),
+  component: function LoginRoute() {
+    const { next } = loginRoute.useSearch();
+    return <LoginScreen next={next} />;
+  },
+});
+
 const officeRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/office",
+  beforeLoad: ({ location }) => {
+    requireSession(location);
+  },
   component: OfficeLayout,
 });
 
@@ -45,7 +83,7 @@ const officeItemsRoute = createRoute({
 const officeItemsIndexRoute = createRoute({
   getParentRoute: () => officeItemsRoute,
   path: "/",
-  component: OfficeHome,
+  component: ItemList,
 });
 
 const officeItemMasterRoute = createRoute({
@@ -60,6 +98,9 @@ const officeItemMasterRoute = createRoute({
 const floorRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/floor",
+  beforeLoad: ({ location }) => {
+    requireSession(location);
+  },
   component: FloorLayout,
 });
 
@@ -74,6 +115,12 @@ const floorWorkOrdersRoute = createRoute({
   path: "work-orders",
 });
 
+const floorWorkOrdersIndexRoute = createRoute({
+  getParentRoute: () => floorWorkOrdersRoute,
+  path: "/",
+  component: WorkOrderList,
+});
+
 const floorWorkOrderRoute = createRoute({
   getParentRoute: () => floorWorkOrdersRoute,
   path: "$workOrderId",
@@ -86,6 +133,9 @@ const floorWorkOrderRoute = createRoute({
 const qualityRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/quality",
+  beforeLoad: ({ location }) => {
+    requireSession(location);
+  },
   component: QualityLayout,
 });
 
@@ -95,6 +145,12 @@ const qualityIndexRoute = createRoute({
   beforeLoad: () => {
     throw redirect({ to: "/quality/genealogy" });
   },
+});
+
+const qualityLotsRoute = createRoute({
+  getParentRoute: () => qualityRoute,
+  path: "lots",
+  component: LotPicker,
 });
 
 type GenealogySearch = {
@@ -130,15 +186,19 @@ const genealogyRoute = createRoute({
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
+  loginRoute,
   officeRoute.addChildren([
     officeIndexRoute,
     officeItemsRoute.addChildren([officeItemsIndexRoute, officeItemMasterRoute]),
   ]),
   floorRoute.addChildren([
     floorIndexRoute,
-    floorWorkOrdersRoute.addChildren([floorWorkOrderRoute]),
+    floorWorkOrdersRoute.addChildren([
+      floorWorkOrdersIndexRoute,
+      floorWorkOrderRoute,
+    ]),
   ]),
-  qualityRoute.addChildren([qualityIndexRoute, genealogyRoute]),
+  qualityRoute.addChildren([qualityIndexRoute, qualityLotsRoute, genealogyRoute]),
 ]);
 
 export const router = createRouter({
