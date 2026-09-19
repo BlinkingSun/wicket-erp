@@ -26,8 +26,7 @@ use wicket_module::{Profile, SignatureEdge};
 use wicket_server::{
     Config, bootstrap_against_app, capabilities, capability_operations, openapi_document,
     registered_operations, rewrite_database, router, run_iq, schema_bindings,
-    startup_guard_release,
-    with_os_userinfo,
+    startup_guard_release, with_os_userinfo,
 };
 use wicket_statemachine::{EdgeBuilder, Engine, Machine};
 
