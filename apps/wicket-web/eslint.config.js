@@ -117,7 +117,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/api/client.ts"],
+    files: ["src/api/client.ts", "src/api/client/**/*.ts"],
     rules: {
       "no-restricted-syntax": [
         "error",
