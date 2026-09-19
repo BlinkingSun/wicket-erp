@@ -20,14 +20,8 @@ let snapshot: SessionSnapshot = {
 let queryClient: QueryClient | null = null;
 let onUnauthorizedNavigate: (() => void) | null = null;
 
-const IS_TEST = import.meta.env.MODE === "test";
-let testTreatAsSignedIn = IS_TEST;
-
 export function setTestTreatAsSignedIn(value: boolean): void {
-  if (!IS_TEST) {
-    return;
-  }
-  testTreatAsSignedIn = value;
+  void value;
 }
 
 function emit(): void {
@@ -83,10 +77,7 @@ export function getCsrfToken(): string | null {
 }
 
 export function hasSession(): boolean {
-  if (getCsrfToken() !== null) {
-    return true;
-  }
-  return testTreatAsSignedIn;
+  return getCsrfToken() !== null;
 }
 
 export function setSession(next: {

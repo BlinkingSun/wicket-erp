@@ -1,6 +1,6 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import "../features/items/items.css";
 import { ModeSwitch } from "./mode-switch";
+import { SessionChip } from "./session-chip";
 
 const OFFICE_MODULES = [
   { label: "Items", to: "/office/items" as const, enabled: true },
@@ -17,11 +17,11 @@ export function OfficeLayout() {
 
   return (
     <div className="office-shell">
-      <aside className="office-rail">
+      <aside className="mode-rail">
         <h1>Wicket</h1>
         <ModeSwitch />
         <nav aria-label="Office modules">
-          <ul className="office-nav">
+          <ul className="mode-nav">
             {OFFICE_MODULES.map((entry) => {
               if (entry.enabled && "to" in entry) {
                 const active = pathname.startsWith(entry.to);
@@ -35,7 +35,7 @@ export function OfficeLayout() {
               }
               return (
                 <li key={entry.label}>
-                  <span className="office-nav__disabled" aria-disabled="true">
+                  <span className="mode-nav__disabled" aria-disabled="true">
                     {entry.label}
                   </span>
                 </li>
@@ -43,6 +43,7 @@ export function OfficeLayout() {
             })}
           </ul>
         </nav>
+        <SessionChip />
       </aside>
       <main className="office-main">
         <Outlet />
