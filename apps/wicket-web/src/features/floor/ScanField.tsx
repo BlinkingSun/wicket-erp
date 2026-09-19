@@ -1,7 +1,18 @@
+import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { SCAN_LOOKUP_UNAVAILABLE } from "./unbacked";
 
 export { SCAN_LOOKUP_UNAVAILABLE };
+
+export const TRAVELER_SCAN_MESSAGE =
+  "A work-order UUID opens the job. Scanning a work-order number or traveler does not work yet.";
+
+const WORK_ORDER_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isWorkOrderUuid(raw: string): boolean {
+  return WORK_ORDER_UUID.test(raw);
+}
 
 function scanReceivedMessage(raw: string): string {
   const identifier = raw.trim();
@@ -11,17 +22,49 @@ function scanReceivedMessage(raw: string): string {
   return `Received "${identifier}". ${SCAN_LOOKUP_UNAVAILABLE}`;
 }
 
-export function ScanField() {
+type ScanFieldProps = {
+  compact?: boolean;
+};
+
+export function ScanField({ compact = false }: ScanFieldProps) {
+  const navigate = useNavigate();
+  const params = useParams({ strict: false });
+  const workOrderId =
+    typeof params.workOrderId === "string" ? params.workOrderId : undefined;
   const [value, setValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [visibleMessage, setVisibleMessage] = useState<string | null>(null);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const identifier = value.trim();
+    if (isWorkOrderUuid(identifier)) {
+      setVisibleMessage(null);
+      setMessage(null);
+      void navigate({
+        to: "/floor/work-orders/$workOrderId",
+        params: { workOrderId: identifier.toLowerCase() },
+      });
+      return;
+    }
     setMessage(scanReceivedMessage(value));
+    setVisibleMessage(TRAVELER_SCAN_MESSAGE);
   }
 
+  const scanClass = compact ? "floor-scan floor-scan--compact" : "floor-scan";
+
   return (
-    <form className="floor-scan" onSubmit={handleSubmit} role="search">
+    <form className={scanClass} onSubmit={handleSubmit} role="search">
+      {workOrderId ? (
+        <Link
+          to="/floor/work-orders"
+          className="floor-back"
+          aria-label="Back to work orders"
+          activeOptions={{ exact: true }}
+        >
+          BACK
+        </Link>
+      ) : null}
       <div className="floor-scan__outer">
         <button className="floor-scan__tap" type="submit">
           TAP OR SCAN
@@ -46,6 +89,11 @@ export function ScanField() {
           />
         </div>
       </div>
+      {visibleMessage ? (
+        <p className="floor-scan__message" role="alert">
+          {visibleMessage}
+        </p>
+      ) : null}
       <p id="floor-scan-note" className="floor-sr-only" role="status">
         {message ?? SCAN_LOOKUP_UNAVAILABLE}
       </p>
