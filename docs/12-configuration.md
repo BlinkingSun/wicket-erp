@@ -29,6 +29,9 @@ Provisioning, profile choice, first boot, backup, and hardening procedures are A
 - **`WICKET_SETTINGS` is not an environment variable.** It is a Rust constant of
   PostgreSQL `wicket.*` GUC names (`crates/wicket-db/src/lib.rs`). The OS environment
   has no `WICKET_SETTINGS`.
+- **`WICKET_UI_ROOT` is not required-at-boot and is not `WICKET_BLOB_ROOT`.** Unset,
+  the engine serves the API only. Set, it must already be a directory that contains
+  `index.html`; boot does not create it. Blob storage stays on `WICKET_BLOB_ROOT`.
 
 ---
 
@@ -57,6 +60,7 @@ not listed.
 | `WICKET_BOOTSTRAP_URL` | required-at-boot | `crates/wicket-server/src/config.rs` (`Config::load`) |
 | `WICKET_PROFILE` | required-at-boot | `crates/wicket-server/src/config.rs` (`Config::load`; also `--profile`, TOML `profile`) |
 | `WICKET_BIND` | optional-at-runtime | `crates/wicket-server/src/config.rs` (default `0.0.0.0:8080`; also `--bind`) |
+| `WICKET_UI_ROOT` | optional-at-runtime | `crates/wicket-server/src/config.rs` (`Config::load`; also `--ui-root`, TOML `ui_root`) |
 | `WICKET_CONFIG` | optional-at-runtime | `crates/wicket-server/src/config.rs` (TOML path when `--config` is omitted) |
 | `WICKET_GENEALOGY_INLINE_MAX` | optional-at-runtime | `modules/genealogy/src/store.rs` (`inline_max_postings`; default 32 from `modules/genealogy/src/domain.rs`) |
 | `PGUSER` | optional-at-runtime | `crates/wicket-server/src/config.rs` (`with_os_userinfo`); `crates/wicket-test/src/lib.rs` (`os_username`) |
@@ -97,6 +101,7 @@ use those passwords or loopback trust.
 | Name | Default / behaviour when unset |
 |---|---|
 | `WICKET_BIND` | `0.0.0.0:8080` |
+| `WICKET_UI_ROOT` | Unset: the engine does not serve the UI (API only; a reverse proxy is still valid). Set: existing directory of the built SPA (`apps/wicket-web/dist` in this tree). Missing, not a directory, or no `index.html` fails `Config::load` / boot and names the path. |
 | `WICKET_CONFIG` | No file; CLI flags and the other variables only |
 | `WICKET_GENEALOGY_INLINE_MAX` | `32` unique postings before a genealogy trace is enqueued as a job |
 | `PGUSER` / `USER` / `LOGNAME` | Used only to fill userinfo on a URL that has none, so sqlx does not connect as `anonymous`. `PGUSER` wins, then `USER`, then `LOGNAME`, then `id -un` |

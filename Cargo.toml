@@ -64,7 +64,7 @@ trybuild      = "1"
 anyhow        = "1"
 axum          = "0.8"
 tower         = "0.5"
-tower-http    = { version = "0.6", features = ["trace"] }
+tower-http    = { version = "0.6", features = ["trace", "fs"] }
 clap          = { version = "4", features = ["derive", "env"] }
 pdf-writer    = { version = "0.12", default-features = false }
 # ADR 0011 / GOV-7: JSON Schema derived from handler types for the served OpenAPI document.

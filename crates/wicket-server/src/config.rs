@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use wicket_module::{Profile, ProfileId};
 
@@ -29,7 +29,18 @@ impl Config {
         profile: Option<&str>,
         bind: Option<&str>,
         config_path: Option<&PathBuf>,
+        ui_root: Option<&Path>,
     ) -> Result<Self> {
+        Ok(Self::load_pair(profile, bind, config_path, ui_root)?.0)
+    }
+
+    /// Load config and the resolved SPA directory (CLI, else env, else TOML).
+    pub(crate) fn load_pair(
+        profile: Option<&str>,
+        bind: Option<&str>,
+        config_path: Option<&PathBuf>,
+        ui_root: Option<&Path>,
+    ) -> Result<(Self, Option<PathBuf>)> {
         let file = if let Some(path) = config_path {
             let text = fs::read_to_string(path)
                 .map_err(|e| Error::Config(format!("config file {}: {e}", path.display())))?;
@@ -41,6 +52,20 @@ impl Config {
         } else {
             FileConfig::default()
         };
+
+        let ui_root = ui_root
+            .map(Path::to_path_buf)
+            .or_else(|| {
+                std::env::var("WICKET_UI_ROOT")
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .map(PathBuf::from)
+            })
+            .or_else(|| file.ui_root.clone().filter(|p| !p.as_os_str().is_empty()));
+        if let Some(ref path) = ui_root {
+            validate_ui_root(path)?;
+        }
 
         let profile_id = profile
             .map(str::to_owned)
@@ -72,13 +97,16 @@ impl Config {
             &database_url,
         );
 
-        Ok(Self {
-            profile,
-            bind,
-            database_url,
-            migrate_url,
-            bootstrap_url,
-        })
+        Ok((
+            Self {
+                profile,
+                bind,
+                database_url,
+                migrate_url,
+                bootstrap_url,
+            },
+            ui_root,
+        ))
     }
 }
 
@@ -146,13 +174,14 @@ fn os_username() -> Option<String> {
         })
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct FileConfig {
     profile: Option<String>,
     bind: Option<String>,
     database_url: Option<String>,
     migrate_url: Option<String>,
     bootstrap_url: Option<String>,
+    ui_root: Option<PathBuf>,
 }
 
 fn parse_toml(text: &str) -> Result<FileConfig> {
@@ -170,6 +199,7 @@ fn parse_toml(text: &str) -> Result<FileConfig> {
         match key {
             "profile" => out.profile = Some(val),
             "bind" => out.bind = Some(val),
+            "ui_root" => out.ui_root = Some(PathBuf::from(val)),
             "database_url" => out.database_url = Some(val),
             "migrate_url" => out.migrate_url = Some(val),
             "bootstrap_url" => out.bootstrap_url = Some(val),
@@ -181,6 +211,30 @@ fn parse_toml(text: &str) -> Result<FileConfig> {
 
 fn unquote(s: &str) -> String {
     s.trim_matches('"').trim_matches('\'').to_string()
+}
+
+/// Existing directory that contains `index.html`. Named in the error.
+pub(crate) fn validate_ui_root(path: &Path) -> Result<()> {
+    let meta = fs::metadata(path)
+        .map_err(|e| Error::Config(format!("ui root {}: {e}", path.display())))?;
+    if !meta.is_dir() {
+        return Err(Error::Config(format!(
+            "ui root {}: not a directory",
+            path.display()
+        )));
+    }
+    let index = path.join("index.html");
+    match fs::metadata(&index) {
+        Ok(m) if m.is_file() => Ok(()),
+        Ok(_) => Err(Error::Config(format!(
+            "ui root {}: index.html is not a file",
+            path.display()
+        ))),
+        Err(_) => Err(Error::Config(format!(
+            "ui root {}: no index.html",
+            path.display()
+        ))),
+    }
 }
 
 fn required_url(name: &str, from_file: Option<String>) -> Result<String> {
@@ -223,6 +277,72 @@ mod tests {
         assert!(
             !rewritten.contains("/postgres?"),
             "must not install against maintenance db: {rewritten}"
+        );
+    }
+
+    #[test]
+    fn parse_toml_reads_ui_root_beside_bind() {
+        let file = parse_toml("bind = \"127.0.0.1:9\"\nui_root = \"/tmp/wicket-web/dist\"\n")
+            .expect("toml");
+        assert_eq!(file.bind.as_deref(), Some("127.0.0.1:9"));
+        assert_eq!(
+            file.ui_root.as_deref(),
+            Some(Path::new("/tmp/wicket-web/dist"))
+        );
+    }
+
+    #[test]
+    fn missing_ui_root_names_the_path() {
+        let path = PathBuf::from("/no/such/wicket-ui-root-missing");
+        let err = validate_ui_root(&path).expect_err("missing dir");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("wicket-ui-root-missing"),
+            "error must name the path: {msg}"
+        );
+    }
+
+    #[test]
+    fn ui_root_file_is_not_a_directory() {
+        let path = std::env::temp_dir().join(format!("wicket-ui-not-dir-{}", uuid::Uuid::now_v7()));
+        std::fs::write(&path, b"not-a-dir").expect("file");
+        let err = validate_ui_root(&path).expect_err("not a directory");
+        let msg = err.to_string();
+        let _ = std::fs::remove_file(&path);
+        assert!(msg.contains(&path.display().to_string()), "{msg}");
+        assert!(msg.contains("not a directory"), "{msg}");
+    }
+
+    #[test]
+    fn ui_root_directory_without_index_html() {
+        let path =
+            std::env::temp_dir().join(format!("wicket-ui-no-index-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&path).expect("dir");
+        let err = validate_ui_root(&path).expect_err("no index.html");
+        let msg = err.to_string();
+        let _ = std::fs::remove_dir_all(&path);
+        assert!(msg.contains(&path.display().to_string()), "{msg}");
+        assert!(msg.contains("no index.html"), "{msg}");
+    }
+
+    #[test]
+    fn ui_root_directory_with_index_html_ok() {
+        let path = std::env::temp_dir().join(format!("wicket-ui-ok-{}", uuid::Uuid::now_v7()));
+        std::fs::create_dir_all(&path).expect("dir");
+        std::fs::write(path.join("index.html"), b"<!doctype html>").expect("index");
+        validate_ui_root(&path).expect("valid ui root");
+        let _ = std::fs::remove_dir_all(&path);
+    }
+
+    #[test]
+    fn load_rejects_missing_ui_root_before_urls() {
+        let path = PathBuf::from("/no/such/wicket-ui-root-load");
+        let err =
+            Config::load(Some("plain-shop"), None, None, Some(&path)).expect_err("missing ui root");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("wicket-ui-root-load"),
+            "Config::load must name the path: {msg}"
         );
     }
 }

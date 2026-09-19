@@ -30,6 +30,9 @@ enum Command {
         /// Optional TOML config file.
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Directory of the built SPA. Unset: API only. No default, so env and TOML can win.
+        #[arg(long)]
+        ui_root: Option<PathBuf>,
     },
     /// Apply kernel + module migrations.
     Migrate {
@@ -82,24 +85,30 @@ pub async fn run() -> Result<()> {
             profile,
             bind,
             config,
+            ui_root,
         } => {
-            let cfg = Config::load(Some(&profile), Some(&bind), config.as_ref())?;
-            let app = App::boot(cfg).await?;
+            let (cfg, ui_root) = Config::load_pair(
+                Some(&profile),
+                Some(&bind),
+                config.as_ref(),
+                ui_root.as_deref(),
+            )?;
+            let app = App::boot_with_ui(cfg, ui_root).await?;
             crate::http::serve(app.state()).await
         }
         Command::Migrate { config, profile } => {
-            let cfg = Config::load(profile.as_deref(), None, config.as_ref())?;
+            let cfg = Config::load(profile.as_deref(), None, config.as_ref(), None)?;
             migrate(&cfg).await
         }
         Command::Db { cmd: DbCmd::Check } => db_check().await,
         Command::Iq { profile, config } => {
-            let cfg = Config::load(profile.as_deref(), None, config.as_ref())?;
+            let cfg = Config::load(profile.as_deref(), None, config.as_ref(), None)?;
             iq(&cfg).await
         }
         Command::Manifest {
             cmd: ManifestCmd::Export { profile, config },
         } => {
-            let cfg = Config::load(profile.as_deref(), None, config.as_ref())?;
+            let cfg = Config::load(profile.as_deref(), None, config.as_ref(), None)?;
             manifest_export(&cfg).await
         }
     }

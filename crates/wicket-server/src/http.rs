@@ -7,14 +7,18 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 
 use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, Request, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::{MethodRouter, get, patch, post, put};
-use tower::ServiceBuilder;
+use tower::{ServiceBuilder, ServiceExt};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::boot::AppState;
 use crate::capabilities::{self, Capability};
-use crate::error::Result;
+use crate::envelope::{RequestId, error_response};
+use crate::error::{Error, Result};
 use crate::extract::{limits_mw, request_id_mw};
 use crate::handlers;
 
@@ -115,11 +119,41 @@ pub fn router(state: AppState) -> Router {
     for (path, mr) in by_path {
         r = r.route(path, mr);
     }
-    r.layer(DefaultBodyLimit::max(1024 * 1024))
+    // Capability table is exhaustive for /api. Fallback never shadows it:
+    // unmatched /api/** stays the JSON error envelope, never index.html.
+    r.fallback(static_or_api_404)
+        .layer(DefaultBodyLimit::max(1024 * 1024))
         .layer(axum::middleware::from_fn(limits_mw))
         .layer(axum::middleware::from_fn(request_id_mw))
         .layer(ServiceBuilder::new().layer(TraceLayer::new_for_http()))
         .with_state(state)
+}
+
+fn is_api_path(path: &str) -> bool {
+    path == "/api" || path.starts_with("/api/")
+}
+
+async fn static_or_api_404(
+    State(state): State<AppState>,
+    req: Request,
+) -> axum::response::Response {
+    if is_api_path(req.uri().path()) {
+        let request_id = req
+            .extensions()
+            .get::<RequestId>()
+            .map(|r| r.as_str())
+            .unwrap_or("00000000-0000-0000-0000-000000000000");
+        return error_response(Error::not_found("not found"), request_id);
+    }
+    let Some(root) = state.ui_root() else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let index = root.join("index.html");
+    let svc = ServeDir::new(root).fallback(ServeFile::new(index));
+    match svc.oneshot(req).await {
+        Ok(resp) => resp.into_response(),
+        Err(infallible) => match infallible {},
+    }
 }
 
 /// Bind and serve.
