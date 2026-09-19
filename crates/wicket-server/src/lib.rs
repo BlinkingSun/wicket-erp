@@ -23,6 +23,7 @@ mod http;
 mod idempotency;
 mod openapi;
 mod read;
+mod schemas;
 mod session;
 mod wire;
 
@@ -37,7 +38,9 @@ pub use config::{Config, bootstrap_against_app, rewrite_database, with_os_userin
 pub use envelope::{ErrorBody, ListBody};
 pub use error::{Error, Result};
 pub use http::{router, serve};
-pub use openapi::{document as openapi_document, mounted_operations, registered_operations};
+pub use openapi::{
+    document as openapi_document, mounted_operations, registered_operations, schema_bindings,
+};
 
 /// Embedded migrator (`placeholder` + `0001_server`).
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");

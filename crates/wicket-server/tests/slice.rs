@@ -24,7 +24,8 @@ use wicket_ledger::{GroupBuilder, post, rebuild, verify_projection};
 use wicket_module::{Profile, SignatureEdge};
 use wicket_server::{
     Config, bootstrap_against_app, capabilities, capability_operations, openapi_document,
-    registered_operations, rewrite_database, run_iq, startup_guard_release, with_os_userinfo,
+    registered_operations, rewrite_database, run_iq, schema_bindings, startup_guard_release,
+    with_os_userinfo,
 };
 use wicket_statemachine::{EdgeBuilder, Engine, Machine};
 
@@ -1108,7 +1109,7 @@ async fn issue_wo_is_one_transaction() {
     if common::skip_if_no_pg() {
         return;
     }
-    let src = include_str!("../src/handlers/mod.rs");
+    let src = include_str!("../src/handlers/production.rs");
     let start = src.find("async fn issue_wo_inner").expect("issue_wo_inner");
     let rest = &src[start..];
     let end = rest
@@ -1288,7 +1289,7 @@ async fn reverse_issue_restores_on_hand() {
     if common::skip_if_no_pg() {
         return;
     }
-    let src = include_str!("../src/handlers/mod.rs");
+    let src = include_str!("../src/handlers/inventory.rs");
     let start = src.find("async fn reverse_inner").expect("reverse_inner");
     let rest = &src[start..];
     let end = rest.find("/// Health.").unwrap_or(rest.len());
@@ -1923,38 +1924,21 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
     }
 }
 
-/// T-35 Wave 1 plus mount-wave-1: the mockup-pressed twelve and the seven
-/// identity/resolve operations carry request/response schemas on the *served*
-/// document (SPEC §4.3). The table-walk is a twin of
-/// `every_capability_has_a_handler`; this test is the contract a generated
-/// client would read.
+/// Registered body schemas on the *served* document (ADR 0011). Walks
+/// `schema_bindings()` — derived from `schemas::all()` — so a later lane
+/// typing an unregistered operation is not frozen out. The table-walk is a
+/// twin of `every_capability_has_a_handler`; this test is the contract a
+/// generated client would read.
 #[tokio::test(flavor = "multi_thread")]
 async fn served_openapi_carries_wave1_body_schemas() {
     if common::skip_if_no_pg() {
         return;
     }
-    const WAVE1: &[&str] = &[
-        "getItem",
-        "listItems",
-        "updateItem",
-        "getLot",
-        "listSerials",
-        "traceGenealogy",
-        "getImpact",
-        "getGenealogyJob",
-        "getOnHand",
-        "login",
-        "getNavigation",
-        "getOwnProfile",
-        "listPrincipals",
-        "getPrincipalByUsername",
-        "listRoles",
-        "getRoleByName",
-        "listRolesForPrincipal",
-        "resolveItemByNumber",
-        "resolveWorkOrderByNumber",
-    ];
-    const WAVE1_REQUEST: &[&str] = &["updateItem", "login"];
+    let registered = schema_bindings();
+    assert!(
+        !registered.is_empty(),
+        "schema registry must register in-scope operations"
+    );
     for profile in profiles() {
         let w = common::boot(profile).await;
         let (st, doc) = w.get("/api/v1/openapi.json").await;
@@ -1962,7 +1946,7 @@ async fn served_openapi_carries_wave1_body_schemas() {
         let listed = registered_operations(&doc);
         assert_eq!(listed.len(), 72, "operation set must stay at 72");
 
-        for id in WAVE1 {
+        for (id, has_request) in &registered {
             let cap = capabilities()
                 .find(|c| c.id == *id)
                 .unwrap_or_else(|| panic!("{id} missing from capability table"));
@@ -1972,7 +1956,7 @@ async fn served_openapi_carries_wave1_body_schemas() {
                 schema.is_object(),
                 "{id} missing responses.200 content schema: {schema}"
             );
-            if WAVE1_REQUEST.contains(id) {
+            if *has_request {
                 let req = &op["requestBody"]["content"]["application/json"]["schema"];
                 assert!(req.is_object(), "{id} missing requestBody schema: {req}");
             } else {
@@ -2044,18 +2028,6 @@ async fn served_openapi_carries_wave1_body_schemas() {
         assert_eq!(
             money["properties"]["amount"]["type"], "string",
             "MoneyWire.amount is a JSON string (docs/10 §3.2): {money}"
-        );
-
-        // Out of scope keeps today's bare responses block.
-        let create = served_operation(
-            &doc,
-            capabilities()
-                .find(|c| c.id == "createItem")
-                .expect("createItem"),
-        );
-        assert!(
-            create["responses"]["200"].get("content").is_none(),
-            "createItem is out of Wave 1 scope and must stay a bare responses block"
         );
     }
 }
@@ -2140,6 +2112,16 @@ async fn get_handlers_are_read_only() {
         ("documents.rs", include_str!("../src/handlers/documents.rs")),
         ("print.rs", include_str!("../src/handlers/print.rs")),
         ("identity.rs", include_str!("../src/handlers/identity.rs")),
+        ("items.rs", include_str!("../src/handlers/items.rs")),
+        ("locations.rs", include_str!("../src/handlers/locations.rs")),
+        ("lots.rs", include_str!("../src/handlers/lots.rs")),
+        ("inventory.rs", include_str!("../src/handlers/inventory.rs")),
+        (
+            "production.rs",
+            include_str!("../src/handlers/production.rs"),
+        ),
+        ("kernel.rs", include_str!("../src/handlers/kernel.rs")),
+        ("esign.rs", include_str!("../src/handlers/esign.rs")),
     ];
     for name in GET_FNS {
         let body = fn_src_in(HANDLER_SRCS, name);

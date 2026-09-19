@@ -4,59 +4,17 @@
 //! set against `tests/fixtures/openapi-operations.txt`. That fixture does not
 //! carry request/response schemas. Wave 1 schemas are derived from the Rust
 //! types the handlers serialize (`schemars`, ADR 0011) and attached here by
-//! capability id. Presence is gated by the table-walk test
-//! `every_in_scope_capability_has_a_schema_binding` and by served-document
+//! capability id, via [`crate::schemas`]. Presence is gated by the table-walk
+//! test `every_in_scope_capability_has_a_schema_binding` and by served-document
 //! assertions in `tests/slice.rs`. There is no schema
 //! fixture to regenerate: change a type, serve the document, and the tests
 //! read what the binary actually emits. Verify with `just ci` and `just ci-db`.
 
-use schemars::JsonSchema;
 use serde_json::{Value, json};
-use wicket_jobs::JobStatus;
-use wicket_mod_genealogy::{AcceptedBody, Impact, TraceBody};
-use wicket_mod_items::api::ItemBody;
-use wicket_mod_lots::{LotBody, SerialBody};
 use wicket_module::SignatureEdge;
 
 use crate::boot::AppState;
 use crate::capabilities::{self, Capability};
-use crate::envelope::ListBody;
-use crate::handlers::{
-    ItemPatch, LoginBody, LoginResponse, NavigationBody, OnHandBody, ResolveIdBody,
-    identity::{PrincipalBody, RoleBody},
-};
-use crate::wire::MoneyBody;
-
-/// Capability ids whose request/response types this wave schemas. Twin of the
-/// `schema_binding` match; a deleted arm still compiles, so the table-walk test
-/// is the guarantee (ADR 0011 amendment).
-#[cfg_attr(not(test), allow(dead_code))]
-const SCHEMA_CAPABILITIES: &[&str] = &[
-    "getItem",
-    "listItems",
-    "updateItem",
-    "getLot",
-    "listSerials",
-    "traceGenealogy",
-    "getImpact",
-    "getGenealogyJob",
-    "getOnHand",
-    "login",
-    "getNavigation",
-    "getOwnProfile",
-    "listPrincipals",
-    "getPrincipalByUsername",
-    "listRoles",
-    "getRoleByName",
-    "listRolesForPrincipal",
-    "resolveItemByNumber",
-    "resolveWorkOrderByNumber",
-];
-
-struct SchemaBinding {
-    request: Option<Value>,
-    response: Value,
-}
 
 /// Merge the capability table into one OpenAPI 3 document.
 pub fn document(state: &AppState) -> Value {
@@ -74,9 +32,19 @@ pub fn document(state: &AppState) -> Value {
         },
         "paths": paths,
         "components": {
-            "schemas": component_schemas()
+            "schemas": crate::schemas::component_schemas()
         }
     })
+}
+
+/// Registered body-schema capability ids and whether each advertises a request body.
+///
+/// Integration tests walk this instead of a second hand-maintained list.
+pub fn schema_bindings() -> Vec<(&'static str, bool)> {
+    crate::schemas::all()
+        .into_iter()
+        .map(|(id, b)| (id, b.request.is_some()))
+        .collect()
 }
 
 fn required_signature<'a>(
@@ -150,7 +118,7 @@ fn insert(
 }
 
 fn attach_body_schemas(op_v: &mut Value, id: &str) {
-    let Some(binding) = schema_binding(id) else {
+    let Some(binding) = crate::schemas::binding(id) else {
         return;
     };
     op_v["responses"]["200"]["content"] = json!({
@@ -163,202 +131,6 @@ fn attach_body_schemas(op_v: &mut Value, id: &str) {
                 "application/json": { "schema": request }
             }
         });
-    }
-}
-
-fn schema_ref<T: JsonSchema>() -> Value {
-    json!({ "$ref": format!("#/components/schemas/{}", T::schema_name()) })
-}
-
-fn schema_binding(id: &str) -> Option<SchemaBinding> {
-    match id {
-        "getItem" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ItemBody>(),
-        }),
-        "listItems" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ListBody<ItemBody>>(),
-        }),
-        "updateItem" => Some(SchemaBinding {
-            request: Some(schema_ref::<ItemPatch>()),
-            response: schema_ref::<ItemBody>(),
-        }),
-        "getLot" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<LotBody>(),
-        }),
-        "listSerials" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ListBody<SerialBody>>(),
-        }),
-        "traceGenealogy" => Some(SchemaBinding {
-            request: None,
-            response: json!({
-                "oneOf": [
-                    schema_ref::<TraceBody>(),
-                    schema_ref::<AcceptedBody>(),
-                ]
-            }),
-        }),
-        "getImpact" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<Impact>(),
-        }),
-        "getGenealogyJob" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<JobStatus>(),
-        }),
-        "getOnHand" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<OnHandBody>(),
-        }),
-        "login" => Some(SchemaBinding {
-            request: Some(schema_ref::<LoginBody>()),
-            response: schema_ref::<LoginResponse>(),
-        }),
-        "getNavigation" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<NavigationBody>(),
-        }),
-        "getOwnProfile" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<PrincipalBody>(),
-        }),
-        "listPrincipals" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ListBody<PrincipalBody>>(),
-        }),
-        "getPrincipalByUsername" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<PrincipalBody>(),
-        }),
-        "listRoles" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ListBody<RoleBody>>(),
-        }),
-        "getRoleByName" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<RoleBody>(),
-        }),
-        "listRolesForPrincipal" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ListBody<RoleBody>>(),
-        }),
-        "resolveItemByNumber" | "resolveWorkOrderByNumber" => Some(SchemaBinding {
-            request: None,
-            response: schema_ref::<ResolveIdBody>(),
-        }),
-        _ => None,
-    }
-}
-
-fn error_envelope_schema() -> Value {
-    json!({
-        "type": "object",
-        "required": ["error"],
-        "properties": {
-            "error": {
-                "type": "object",
-                "required": ["code", "message", "request_id"],
-                "properties": {
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "field": { "type": ["string", "null"] },
-                    "request_id": { "type": "string", "format": "uuid" }
-                }
-            }
-        }
-    })
-}
-
-fn component_schemas() -> serde_json::Map<String, Value> {
-    let mut schemas = serde_json::Map::new();
-    schemas.insert("ErrorEnvelope".to_owned(), error_envelope_schema());
-    merge_type::<ItemBody>(&mut schemas);
-    merge_type::<ListBody<ItemBody>>(&mut schemas);
-    merge_type::<ItemPatch>(&mut schemas);
-    merge_type::<LotBody>(&mut schemas);
-    merge_type::<SerialBody>(&mut schemas);
-    merge_type::<ListBody<SerialBody>>(&mut schemas);
-    merge_type::<TraceBody>(&mut schemas);
-    merge_type::<AcceptedBody>(&mut schemas);
-    merge_type::<Impact>(&mut schemas);
-    merge_type::<JobStatus>(&mut schemas);
-    merge_type::<OnHandBody>(&mut schemas);
-    merge_type::<LoginBody>(&mut schemas);
-    merge_type::<LoginResponse>(&mut schemas);
-    merge_type::<NavigationBody>(&mut schemas);
-    merge_type::<PrincipalBody>(&mut schemas);
-    merge_type::<ListBody<PrincipalBody>>(&mut schemas);
-    merge_type::<RoleBody>(&mut schemas);
-    merge_type::<ListBody<RoleBody>>(&mut schemas);
-    merge_type::<ResolveIdBody>(&mut schemas);
-    merge_type::<MoneyBody>(&mut schemas);
-    merge_type::<wicket_core::AnyQuantity>(&mut schemas);
-    merge_type::<wicket_core::MoneyWire>(&mut schemas);
-    convert_trace_body_anyof_to_oneof(&mut schemas);
-    schemas
-}
-
-fn merge_type<T: JsonSchema>(into: &mut serde_json::Map<String, Value>) {
-    let root = schemars::schema_for!(T);
-    let mut value = serde_json::to_value(root).expect("schema json");
-    rewrite_definition_refs(&mut value);
-    let defs = value
-        .as_object_mut()
-        .and_then(|o| o.remove("definitions").or_else(|| o.remove("$defs")));
-    if let Some(Value::Object(defs)) = defs {
-        for (k, v) in defs {
-            into.entry(k).or_insert(v);
-        }
-    }
-    if let Some(obj) = value.as_object_mut() {
-        obj.remove("$schema");
-        if obj.get("$ref").is_none() && !obj.is_empty() {
-            into.entry(T::schema_name()).or_insert(value);
-        }
-    }
-}
-
-fn rewrite_definition_refs(value: &mut Value) {
-    match value {
-        Value::Object(map) => {
-            if let Some(Value::String(r)) = map.get_mut("$ref") {
-                if let Some(rest) = r.strip_prefix("#/definitions/") {
-                    *r = format!("#/components/schemas/{rest}");
-                } else if let Some(rest) = r.strip_prefix("#/$defs/") {
-                    *r = format!("#/components/schemas/{rest}");
-                }
-            }
-            for v in map.values_mut() {
-                rewrite_definition_refs(v);
-            }
-        }
-        Value::Array(arr) => {
-            for v in arr {
-                rewrite_definition_refs(v);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn convert_trace_body_anyof_to_oneof(schemas: &mut serde_json::Map<String, Value>) {
-    let trace = schemas
-        .get_mut(&TraceBody::schema_name())
-        .unwrap_or_else(|| panic!("{} missing from components", TraceBody::schema_name()));
-    let obj = trace
-        .as_object_mut()
-        .unwrap_or_else(|| panic!("{} schema is not an object", TraceBody::schema_name()));
-    if let Some(any) = obj.remove("anyOf") {
-        obj.insert("oneOf".to_owned(), any);
-    } else {
-        assert!(
-            obj.contains_key("oneOf"),
-            "{} schema has neither anyOf nor oneOf",
-            TraceBody::schema_name()
-        );
     }
 }
 
@@ -566,23 +338,25 @@ pub fn mounted_operations() -> Vec<(String, String)> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::capabilities;
 
     #[test]
     fn every_in_scope_capability_has_a_schema_binding() {
         let table: Vec<_> = capabilities::table().map(|c| c.id).collect();
-        for id in SCHEMA_CAPABILITIES {
+        let registered = crate::schemas::all();
+        assert!(
+            !registered.is_empty(),
+            "schema registry must register the in-scope operations"
+        );
+        for id in registered.keys() {
             assert!(
                 table.contains(id),
-                "SCHEMA_CAPABILITIES names unknown capability {id}"
+                "schemas::all() names unknown capability {id}"
             );
-            assert!(schema_binding(id).is_some(), "no schema binding for {id}");
+            assert!(
+                crate::schemas::binding(id).is_some(),
+                "no schema binding for {id}"
+            );
         }
-        assert_eq!(
-            SCHEMA_CAPABILITIES.len(),
-            19,
-            "Wave 1 twelve plus the seven mount-wave-1 operations"
-        );
     }
 }
