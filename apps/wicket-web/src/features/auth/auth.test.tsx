@@ -86,6 +86,9 @@ describe("login screen", () => {
         csrf: "csrf-login",
       }),
     );
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { data: [], next_cursor: null, has_more: false }),
+    );
 
     renderApp("/login?next=/office/items");
 
@@ -95,14 +98,13 @@ describe("login screen", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/The item list is not built yet/),
+        screen.getByRole("heading", { name: "Items" }),
       ).toBeInTheDocument();
     });
     expect(getSession()).toEqual({
       csrf: "csrf-login",
       displayName: "Demo",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
       "/api/v1/identity/login",
     );
