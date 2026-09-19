@@ -105,3 +105,217 @@
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+.job-progress-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+  max-width: 40rem;
+  padding: var(--space-2);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.job-progress-block__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.job-progress-block__id {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.job-progress {
+  height: var(--space);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.job-progress__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--duration) var(--easing);
+}
+
+.job-progress-block__pct {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.job-progress-block__note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.job-terminal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.status-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.status-mark__shape {
+  width: var(--space);
+  height: var(--space);
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.status-mark__word {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-mark--queued .status-mark__shape,
+.status-mark--running .status-mark__shape,
+.status-mark--info .status-mark__shape {
+  transform: rotate(45deg);
+  background: var(--status-info);
+}
+
+.status-mark--queued .status-mark__word,
+.status-mark--running .status-mark__word,
+.status-mark--info .status-mark__word {
+  color: var(--status-info);
+}
+
+.status-mark--succeeded .status-mark__shape,
+.status-mark--ok .status-mark__shape,
+.status-mark--available .status-mark__shape {
+  border-radius: var(--radius-pill);
+  background: var(--status-ok);
+}
+
+.status-mark--succeeded .status-mark__word,
+.status-mark--ok .status-mark__word,
+.status-mark--available .status-mark__word {
+  color: var(--status-ok);
+}
+
+.status-mark--cancelled .status-mark__shape,
+.status-mark--warn .status-mark__shape,
+.status-mark--hold .status-mark__shape {
+  width: 0;
+  height: 0;
+  background: transparent;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: var(--space) solid var(--status-warn);
+}
+
+.status-mark--cancelled .status-mark__word,
+.status-mark--warn .status-mark__word,
+.status-mark--hold .status-mark__word {
+  color: var(--status-warn);
+}
+
+.status-mark--failed .status-mark__shape,
+.status-mark--danger .status-mark__shape,
+.status-mark--quarantine .status-mark__shape,
+.status-mark--rejected .status-mark__shape {
+  background: var(--status-danger);
+}
+
+.status-mark--failed .status-mark__word,
+.status-mark--danger .status-mark__word,
+.status-mark--quarantine .status-mark__word,
+.status-mark--rejected .status-mark__word {
+  color: var(--status-danger);
+}
+
+.lot-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.lot-picker__note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  max-width: 40rem;
+}
+
+.lot-picker__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.lot-picker__table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: var(--space) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.lot-picker__table td {
+  padding: var(--space) var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.lot-picker__id,
+.lot-picker__identifier,
+.lot-picker__item {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.lot-picker__actions {
+  text-align: right;
+}
+
+.lot-picker__trace {
+  background: var(--accent);
+  color: var(--surface-base);
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--space) var(--space-2);
+  cursor: pointer;
+}
+
+.lot-picker__trace:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
+}
+
+.lot-picker__next {
+  align-self: flex-end;
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: var(--space) var(--space-2);
+  cursor: pointer;
+}
+
+.lot-picker__next:focus-visible {
+  outline: 1px solid var(--border-strong);
+  outline-offset: 2px;
+}
