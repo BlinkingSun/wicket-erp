@@ -52,23 +52,44 @@ stop_engine() {
 }
 
 start_engine() {
+  local log="${TMPDIR:-/tmp}/wicket-demo-serve.log"
   echo "demo: starting engine on $WICKET_BIND ..."
   if [ -n "${WICKET_UI_ROOT:-}" ]; then
     echo "demo: WICKET_UI_ROOT=$WICKET_UI_ROOT"
   fi
-  cargo run -q -p wicket-server --manifest-path "$ROOT/Cargo.toml" -- \
-    serve --profile "$WICKET_PROFILE" --bind "$WICKET_BIND" &
-  SERVER_PID=$!
+  # New session so the engine outlives `just demo`. The product URL must stay up
+  # after the command returns. Python 3 is already a demo dependency (argon2-cffi).
+  SERVER_PID="$(python3 -c '
+import os, sys
+root, profile, bind, log = sys.argv[1:5]
+child = os.fork()
+if child > 0:
+    print(child)
+    raise SystemExit(0)
+os.setsid()
+os.chdir(root)
+fd0 = os.open(os.devnull, os.O_RDONLY)
+fd1 = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+os.dup2(fd0, 0)
+os.dup2(fd1, 1)
+os.dup2(fd1, 2)
+os.closerange(3, 64)
+os.execvp("cargo", [
+    "cargo", "run", "-q", "-p", "wicket-server",
+    "--manifest-path", os.path.join(root, "Cargo.toml"),
+    "--", "serve", "--profile", profile, "--bind", bind,
+])
+' "$ROOT" "$WICKET_PROFILE" "$WICKET_BIND" "$log")" || die "failed to spawn engine"
   for _ in $(seq 1 120); do
     if engine_up; then
       return 0
     fi
     if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-      die "engine process exited. If port $(listen_port) is in use: lsof -tiTCP:$(listen_port) -sTCP:LISTEN | xargs kill"
+      die "engine process exited (log: $log). If port $(listen_port) is in use: lsof -tiTCP:$(listen_port) -sTCP:LISTEN | xargs kill"
     fi
     sleep 0.5
   done
-  die "engine failed to start on $WICKET_DEMO_BASE_URL"
+  die "engine failed to start on $WICKET_DEMO_BASE_URL (log: $log)"
 }
 
 if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix postgresql@17)/bin/psql" ]; then
