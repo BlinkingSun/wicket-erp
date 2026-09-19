@@ -1,17 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory, createRouter } from "@tanstack/react-router";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GenealogyJobStatusView } from "../../api/client";
+import {
+  mapGenealogyJobStatus,
+  mapLotListPage,
+} from "../../api/client/genealogy";
 import { mapTraceResponse } from "../../api/map-trace";
 import type { TraceQueryDirection, TraceTreeNodeView } from "../../api/view-models";
 import { routeTree } from "../../router";
+import lotsFixture from "./fixtures/lots-page.json";
 import backwardFixture from "./fixtures/trace-backward.json";
 import bothFixture from "./fixtures/trace-both.json";
 import forwardFixture from "./fixtures/trace-forward.json";
 import { GenealogyQuery, HUMAN_ID_NOTE } from "./GenealogyQuery";
 import { GenealogyScreen } from "./GenealogyScreen";
 import { GenealogyTrace } from "./GenealogyTrace";
+import { LOT_LOOKUP_NOTE, LotPicker } from "./LotPicker";
 import { truncateUuid } from "./truncateUuid";
 
 const { mockNavigate } = vi.hoisted(() => ({
@@ -20,6 +27,8 @@ const { mockNavigate } = vi.hoisted(() => ({
 
 vi.mock("../../api/client", () => ({
   traceGenealogy: vi.fn(),
+  getGenealogyJob: vi.fn(),
+  listLots: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -30,12 +39,30 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
-import { traceGenealogy } from "../../api/client";
+import { getGenealogyJob, listLots, traceGenealogy } from "../../api/client";
 
 afterEach(() => {
   cleanup();
-  vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.resetAllMocks();
 });
+
+const JOB_ID = "01932c5a-8b10-7001-8000-0000000000aa";
+const RESULT_URL = `/api/v1/genealogy/jobs/${JOB_ID}`;
+
+function jobStatus(
+  partial: Partial<GenealogyJobStatusView> &
+    Pick<GenealogyJobStatusView, "state" | "progressPct">,
+): GenealogyJobStatusView {
+  return {
+    id: JOB_ID,
+    kind: "genealogy.trace",
+    progressNote: null,
+    result: null,
+    lastError: null,
+    ...partial,
+  };
+}
 
 function findNodeByAmount(
   nodes: TraceTreeNodeView[],
@@ -287,5 +314,192 @@ describe("genealogy screen", () => {
       "aria-checked",
       "true",
     );
+  });
+
+  it("maps a job status payload including progress fields", () => {
+    const mapped = mapGenealogyJobStatus({
+      id: JOB_ID,
+      kind: "genealogy.trace",
+      payload: { from_lot_id: "01932c5a-8b10-7001-8000-000000000003" },
+      state: "Running",
+      attempts: 1,
+      max_attempts: 25,
+      run_after: "2026-09-19T07:30:00Z",
+      progress_pct: 55,
+      progress_note: "folding forest for LOT-2026-0417",
+      result: null,
+      last_error: null,
+    });
+    expect(mapped).toEqual({
+      id: JOB_ID,
+      kind: "genealogy.trace",
+      state: "Running",
+      progressPct: 55,
+      progressNote: "folding forest for LOT-2026-0417",
+      result: null,
+      lastError: null,
+    });
+  });
+
+  it("polls a queued job and renders the tree on Succeeded", async () => {
+    vi.useFakeTimers();
+    vi.mocked(traceGenealogy).mockResolvedValue({
+      kind: "job",
+      jobId: JOB_ID,
+      resultUrl: RESULT_URL,
+    });
+    vi.mocked(getGenealogyJob)
+      .mockResolvedValueOnce(
+        jobStatus({
+          state: "Queued",
+          progressPct: 10,
+          progressNote: "walking postings for LOT-2026-0417",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jobStatus({
+          state: "Running",
+          progressPct: 55,
+          progressNote: "folding forest for WO-2026-1847",
+        }),
+      )
+      .mockResolvedValueOnce(
+        jobStatus({
+          state: "Succeeded",
+          progressPct: 100,
+          result: mapTraceResponse(backwardFixture),
+        }),
+      );
+
+    renderScreen({
+      fromLotId: "01932c5a-8b10-7001-8000-000000000003",
+      direction: "forward",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(screen.getByText("10 percent")).toBeInTheDocument();
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(
+      screen.getByText("walking postings for LOT-2026-0417"),
+    ).toBeInTheDocument();
+    expect(getGenealogyJob).toHaveBeenCalledTimes(1);
+    expect(getGenealogyJob).toHaveBeenCalledWith(RESULT_URL);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByText("55 percent")).toBeInTheDocument();
+    expect(screen.getByText("Running")).toBeInTheDocument();
+    expect(
+      screen.getByText("folding forest for WO-2026-1847"),
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByLabelText("Genealogy trace")).toBeInTheDocument();
+    expect(screen.getByText("Amount 23.652000 USD")).toBeInTheDocument();
+    expect(screen.queryByText("55 percent")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(getGenealogyJob).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders the engine last_error when the job fails", async () => {
+    vi.mocked(traceGenealogy).mockResolvedValue({
+      kind: "job",
+      jobId: JOB_ID,
+      resultUrl: RESULT_URL,
+    });
+    vi.mocked(getGenealogyJob).mockResolvedValue(
+      jobStatus({
+        state: "Failed",
+        progressPct: 40,
+        lastError: "handler panic: boom",
+      }),
+    );
+
+    renderScreen({
+      fromLotId: "01932c5a-8b10-7001-8000-000000000003",
+      direction: "backward",
+    });
+
+    expect(await screen.findByText("handler panic: boom")).toBeInTheDocument();
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Genealogy trace")).not.toBeInTheDocument();
+  });
+
+  it("stops polling when the screen unmounts", async () => {
+    vi.useFakeTimers();
+    vi.mocked(traceGenealogy).mockResolvedValue({
+      kind: "job",
+      jobId: JOB_ID,
+      resultUrl: RESULT_URL,
+    });
+    vi.mocked(getGenealogyJob).mockResolvedValue(
+      jobStatus({ state: "Queued", progressPct: 0 }),
+    );
+
+    const view = renderScreen({
+      fromLotId: "01932c5a-8b10-7001-8000-000000000003",
+      direction: "forward",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+    expect(getGenealogyJob).toHaveBeenCalledTimes(1);
+
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(getGenealogyJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a small inline trace without polling", async () => {
+    vi.mocked(traceGenealogy).mockResolvedValue(mapTraceResponse(forwardFixture));
+
+    renderScreen({
+      fromLotId: "01a0a8ac-b877-7287-a490-976b988b00e4",
+      direction: "forward",
+    });
+
+    expect(await screen.findByLabelText("Genealogy trace")).toBeInTheDocument();
+    expect(getGenealogyJob).not.toHaveBeenCalled();
+  });
+
+  it("lists seeded lots from listLots and traces by lot id", async () => {
+    const user = userEvent.setup();
+    vi.mocked(listLots).mockResolvedValue(mapLotListPage(lotsFixture));
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <LotPicker />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("LOT-2026-0417")).toBeInTheDocument();
+    expect(screen.getByText("LOT-2026-0418")).toBeInTheDocument();
+    expect(screen.getByText("HT-4140-B12")).toBeInTheDocument();
+    expect(screen.getByText("available")).toBeInTheDocument();
+    expect(screen.getByText("quarantine")).toBeInTheDocument();
+    expect(screen.getByText(LOT_LOOKUP_NOTE)).toBeInTheDocument();
+    expect(listLots).toHaveBeenCalledWith({ limit: 20, cursor: undefined });
+
+    await user.click(screen.getAllByRole("button", { name: "Trace" })[0]!);
+    expect(mockNavigate).toHaveBeenCalledWith({
+      to: "/quality/genealogy",
+      search: {
+        from_lot_id: "01932c5a-8b10-7001-8000-000000000003",
+        direction: "forward",
+      },
+    });
   });
 });
