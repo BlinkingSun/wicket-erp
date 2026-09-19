@@ -71,7 +71,7 @@ The class is decided by the diff, not by the author.
 
 **Pull request.** The default. Use it when the diff touches none of the surfaces listed under request for comment below.
 
-**Request for comment, accepted before the pull request opens.** Required when the diff touches a public HTTP path, an event payload, the module manifest schema, the module contract or hook interface, the canonical module order, or the workspace dependency allowlist. Open the request-for-comment issue form, and wait for the maintainer to accept it. A pull request that changes one of these surfaces without an accepted request is closed, not reviewed.
+**Request for comment, accepted before the pull request opens.** Required when the diff touches a public HTTP path, an event payload, the module manifest schema, the module contract or hook interface, the canonical module order, the workspace dependency allowlist, or the `dependencies` block of `apps/wicket-web/package.json`. Open the request-for-comment issue form, and wait for the maintainer to accept it. A pull request that changes one of these surfaces without an accepted request is closed, not reviewed.
 
 **Architecture decision record.** Required when the decision would be expensive to *reverse*, which is a different test from whether it is public. The format, status values and index are in `docs/adr/README.md`.
 
@@ -94,7 +94,7 @@ Modules are compiled-in workspace crates, not runtime plugins (`docs/03-module-s
 - Routes under the module's own namespace, declared with their method.
 - A total signature declaration on every machine edge. Under the regulated profile, a required edge with no signature gate fails at startup, by design.
 - An entry in the canonical module order and in both profile files.
-- No new workspace dependency without a request for comment and an allowlist edit in the same change.
+- No new workspace dependency, and no new entry in the `dependencies` block of `apps/wicket-web/package.json`, without a request for comment and an allowlist edit in the same change.
 
 Propose the module first with the module-proposal issue form. Writing it before the identity is agreed wastes your time, not the maintainer's.
 
