@@ -445,7 +445,8 @@ ui-test:
 demo-db-reset:
     bash "{{root}}/scripts/demo-db-reset.sh"
 
-# Local demo: Postgres, migrate, dev login bootstrap, API seed, engine on 127.0.0.1:8080.
+# Local demo: Postgres, migrate, SPA build when Node is present, seed, engine on 127.0.0.1:8080.
+# Uses wicket_demo (never wicket_test). Node is optional: without it the engine API still comes up.
 # Fresh demo DB: `just db-up && just demo-db-reset && just demo` (or `just demo` auto-resets if missing).
 demo:
     bash "{{root}}/scripts/demo.sh"

@@ -14,6 +14,7 @@ use common::{World, pass, qty};
 use serde_json::{Value, json};
 use sqlx::{query_as, query_scalar};
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 use tower::ServiceExt;
 use wicket_core::{
     Actor, ActorKind, AnyQuantity, DimensionKind, GroupKind, Identifier, ItemId, LocationId,
@@ -24,7 +25,8 @@ use wicket_ledger::{GroupBuilder, post, rebuild, verify_projection};
 use wicket_module::{Profile, SignatureEdge};
 use wicket_server::{
     Config, bootstrap_against_app, capabilities, capability_operations, openapi_document,
-    registered_operations, rewrite_database, run_iq, schema_bindings, startup_guard_release,
+    registered_operations, rewrite_database, router, run_iq, schema_bindings,
+    startup_guard_release,
     with_os_userinfo,
 };
 use wicket_statemachine::{EdgeBuilder, Engine, Machine};
@@ -1570,11 +1572,176 @@ async fn openapi_listed_paths_are_not_bare_404() {
                 );
             }
         }
-        let (st, _, _) = w
+        let (st, headers, body) = w
             .call("GET", "/api/v1/mod-does-not-exist/foo", None, None)
             .await;
-        assert_eq!(st, StatusCode::NOT_FOUND);
+        assert_json_api_not_found(st, &headers, &body, "unknown /api/v1 path");
     }
+}
+
+fn content_type(headers: &axum::http::HeaderMap) -> String {
+    headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn assert_json_api_not_found(
+    st: StatusCode,
+    headers: &axum::http::HeaderMap,
+    body: &Value,
+    label: &str,
+) {
+    assert_eq!(st, StatusCode::NOT_FOUND, "{label} {body}");
+    let ct = content_type(headers);
+    assert!(
+        ct.starts_with("application/json"),
+        "{label} content-type={ct} body={body}"
+    );
+    assert_eq!(body["error"]["code"], "NOT_FOUND", "{label} {body}");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .is_some_and(|m| !m.is_empty()),
+        "{label} message {body}"
+    );
+    assert!(
+        body["error"]["request_id"]
+            .as_str()
+            .is_some_and(|m| !m.is_empty()),
+        "{label} request_id {body}"
+    );
+    assert!(
+        !matches!(body, Value::String(_)),
+        "{label} must be the JSON envelope, not HTML: {body}"
+    );
+}
+
+struct UiFixture {
+    path: PathBuf,
+}
+
+impl Drop for UiFixture {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+fn make_ui_fixture() -> UiFixture {
+    let path = std::env::temp_dir().join(format!("wicket-ui-serve-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(path.join("assets")).expect("ui root");
+    std::fs::write(
+        path.join("index.html"),
+        b"<!doctype html><title>wicket-ui</title><div id=\"root\"></div>\n",
+    )
+    .expect("index.html");
+    std::fs::write(
+        path.join("assets").join("app.js"),
+        b"console.log('wicket');\n",
+    )
+    .expect("app.js");
+    UiFixture { path }
+}
+
+fn assert_spa_html(headers: &axum::http::HeaderMap, body: &Value, label: &str) {
+    let ct = content_type(headers);
+    assert!(
+        ct.starts_with("text/html"),
+        "{label} content-type={ct} body={body}"
+    );
+    match body {
+        Value::String(s) => assert!(s.contains("wicket-ui"), "{label} {s}"),
+        other => panic!("{label} expected HTML text, got {other}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ui_root_serves_spa_and_keeps_api_json_404() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    let ui = make_ui_fixture();
+    let mut w = common::boot(Profile::plain_shop().unwrap()).await;
+    w.app = router(w.state.with_ui_root(ui.path.clone()));
+
+    let (st, headers, body) = w.call("GET", "/", None, None).await;
+    assert_eq!(st, StatusCode::OK, "/ {body}");
+    assert_spa_html(&headers, &body, "/");
+
+    let (st, headers, body) = w.call("GET", "/office/items/abc", None, None).await;
+    assert_eq!(st, StatusCode::OK, "deep client route {body}");
+    assert_spa_html(&headers, &body, "/office/items/abc");
+
+    let (st, headers, body) = w.call("GET", "/assets/app.js", None, None).await;
+    assert_eq!(st, StatusCode::OK, "asset {body}");
+    let ct = content_type(&headers);
+    assert!(
+        ct.contains("javascript"),
+        "asset content-type={ct} body={body}"
+    );
+    match &body {
+        Value::String(s) => assert!(s.contains("wicket"), "asset {s}"),
+        other => panic!("asset body should be the file text, got {other}"),
+    }
+
+    let (st, headers, body) = w.call("GET", "/api/v1/this-is-a-typo", None, None).await;
+    assert_json_api_not_found(st, &headers, &body, "/api/v1 typo with UI root");
+
+    let (st, body) = w.get("/health").await;
+    assert_eq!(st, StatusCode::OK, "health with UI root {body}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn without_ui_root_non_api_stays_bare_404() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    let w = common::boot(Profile::plain_shop().unwrap()).await;
+
+    let (st, headers, body) = w.call("GET", "/", None, None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "/ {body}");
+    assert!(
+        !content_type(&headers).starts_with("text/html"),
+        "no UI root must not serve HTML at /: {} {body}",
+        content_type(&headers)
+    );
+
+    let (st, headers, body) = w.call("GET", "/office/items/abc", None, None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "deep route {body}");
+    assert!(
+        !content_type(&headers).starts_with("text/html"),
+        "no UI root must not serve HTML on a client route"
+    );
+
+    let (st, body) = w.get("/health").await;
+    assert_eq!(st, StatusCode::OK, "health {body}");
+
+    let (st, headers, body) = w
+        .call("GET", "/api/v1/mod-does-not-exist/foo", None, None)
+        .await;
+    assert_json_api_not_found(st, &headers, &body, "unknown /api/v1 with no UI root");
+}
+
+#[test]
+fn config_load_names_missing_or_indexless_ui_root() {
+    let missing = PathBuf::from("/no/such/wicket-ui-root-slice");
+    let err =
+        Config::load(Some("plain-shop"), None, None, Some(&missing)).expect_err("missing ui root");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("wicket-ui-root-slice"),
+        "Config::load must name the path: {msg}"
+    );
+
+    let dir =
+        std::env::temp_dir().join(format!("wicket-ui-no-index-slice-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let err = Config::load(Some("plain-shop"), None, None, Some(&dir)).expect_err("no index.html");
+    let msg = err.to_string();
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(msg.contains(&dir.display().to_string()), "{msg}");
+    assert!(msg.contains("no index.html"), "{msg}");
 }
 
 fn parse_openapi_operation_fixture(raw: &str) -> Vec<(String, String)> {

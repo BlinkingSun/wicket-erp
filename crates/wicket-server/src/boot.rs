@@ -57,6 +57,7 @@ pub struct App {
     /// App-role URL (fresh pools for nested block_on).
     pub database_url: String,
     blobs: FsBlobStore,
+    ui_root: Option<PathBuf>,
 }
 
 /// Test harness pin used by [`App::boot`] when `WICKET_BLOB_ROOT` is unset.
@@ -109,11 +110,19 @@ impl App {
     /// Requires a writable `WICKET_BLOB_ROOT` (both profiles) before any pool
     /// is opened; never substitutes a temp directory.
     pub async fn boot(cfg: Config) -> Result<Self> {
+        Self::boot_with_ui(cfg, None).await
+    }
+
+    /// Boot and, when `ui_root` is set, serve the built SPA from that directory.
+    pub async fn boot_with_ui(cfg: Config, ui_root: Option<PathBuf>) -> Result<Self> {
+        if let Some(ref root) = ui_root {
+            crate::config::validate_ui_root(root)?;
+        }
         let blobs = compose_blob_store()?;
         let migrate = wicket_db::connect(&cfg.migrate_url).await?;
         let app_pool = wicket_db::connect(&cfg.database_url).await?;
         let bootstrap = wicket_db::connect(&cfg.bootstrap_url).await?;
-        let app = Self::boot_pools(
+        let mut app = Self::boot_pools(
             cfg.profile,
             app_pool,
             &migrate,
@@ -123,6 +132,7 @@ impl App {
             blobs,
         )
         .await?;
+        app.ui_root = ui_root;
         bootstrap.close().await;
         migrate.close().await;
         Ok(app)
@@ -180,6 +190,7 @@ impl App {
             calibration_doc,
             database_url,
             blobs,
+            ui_root: None,
         })
     }
 
@@ -194,6 +205,7 @@ impl App {
                 database_url: self.database_url,
                 blobs: Arc::new(self.blobs),
             }),
+            ui_root: self.ui_root,
         }
     }
 }
@@ -202,6 +214,7 @@ impl App {
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<AppInner>,
+    ui_root: Option<PathBuf>,
 }
 
 struct AppInner {
@@ -252,6 +265,19 @@ impl AppState {
     /// Composed [`FsBlobStore`] shared with documents attach / print archive.
     pub fn blobs(&self) -> &FsBlobStore {
         &self.inner.blobs
+    }
+
+    /// Built SPA directory when the engine serves the UI (ADR 0012).
+    pub fn ui_root(&self) -> Option<&Path> {
+        self.ui_root.as_deref()
+    }
+
+    /// Clone this state so the router serves the SPA from `root`.
+    pub fn with_ui_root(&self, root: PathBuf) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            ui_root: Some(root),
+        }
     }
 }
 
