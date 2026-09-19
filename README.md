@@ -49,22 +49,17 @@ Before touching the kernel, the ledger, or the module contract, half a day of re
 
 ## 5. Running it
 
-From a clone with PostgreSQL on `127.0.0.1:5432`, Rust **1.98.1**, and Python 3 with `argon2-cffi` installed, start the local demo with:
+From a clone with PostgreSQL on `127.0.0.1:5432`, Rust **1.98.1**, and Python 3 with `argon2-cffi` installed:
 
 ```sh
 just demo
 ```
 
-The recipe is idempotent. It brings up Postgres when a container runtime is present, migrates the **`wicket_demo`** database, bootstraps a development login, seeds data through `/api/v1`, starts the engine on **`http://127.0.0.1:8080`**, and prints the health URL plus login **`demo`** / password **`demo-login`**. That is a development setup with a known password and a SQL-bootstrapped account, not a production install — [docs/14-first-run.md](docs/14-first-run.md) states why and covers a fresh machine (`just db-up`, `just demo-db-reset`), reset, troubleshooting, and the UI proxy.
+Open the URL it prints last. With Node 22 or newer that is the product at **`http://127.0.0.1:8080/`**. The recipe is idempotent: it brings up Postgres when a container runtime is present, migrates the **`wicket_demo`** database (never **`wicket_test`** — `just ci-db` owns that one), bootstraps a development login, builds the first-party UI when Node is installed, starts the engine with `WICKET_UI_ROOT` pointing at `apps/wicket-web/dist`, and seeds data through `/api/v1`. Login is **`demo`** / **`demo-login`**. A client route typed in the address bar (`/quality/genealogy`, `/office/items/<item-id>`) is the same origin. After seeding, the demo item UUID is in `dev/demo-seed-item-id`.
 
-The engine is enough to hit the API. For the first-party UI, in another terminal:
+Without Node the engine API still comes up and the command says the UI was skipped. `just ci` does not require Node; this recipe does not add a UI step to it.
 
-```sh
-export WICKET_API_ORIGIN=http://127.0.0.1:8080
-npm run dev --prefix apps/wicket-web
-```
-
-Open the URL Vite prints (default `http://127.0.0.1:5173`). The default route is the **genealogy** screen at `/quality/genealogy` — paste a lot UUID from the seeded demo data to load a trace tree. The **item master** at `/office/items/<item-id>` shows header fields and an inventory tab backed by the API; the BOM, routing, documents, and where-used tabs are deliberate empty states because those operations are not built yet. After seeding, the demo item UUID is in `dev/demo-seed-item-id`. Most other office modules in the shell are disabled; shop-floor mode is still an empty shell.
+That is a development setup with a known password and a SQL-bootstrapped account, not a production install — [docs/14-first-run.md](docs/14-first-run.md) states why and covers a fresh machine (`just db-up`, `just demo-db-reset`), reset, and troubleshooting. The default screen is **genealogy** at `/quality/genealogy` — paste a lot UUID from the seeded demo data to load a trace tree. The **item master** at `/office/items/<item-id>` shows header fields and an inventory tab backed by the API; the BOM, routing, documents, and where-used tabs are deliberate empty states because those operations are not built yet. Most other office modules in the shell are disabled; shop-floor mode is still an empty shell.
 
 ## 6. Building
 
