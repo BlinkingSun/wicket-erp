@@ -2,6 +2,7 @@
 //!
 //! Route wiring lives in `wicket-server`; this crate exposes typed operations only.
 
+use schemars::JsonSchema;
 use serde_json::{Value, json};
 use wicket_core::LocationId;
 use wicket_db::Tx;
@@ -81,7 +82,8 @@ pub const ERROR_CODES: &[&str] = &[
 ];
 
 /// List envelope (`docs/10` §2.3).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[schemars(bound = "T: JsonSchema")]
 pub struct ListResponse<T> {
     /// Page of rows.
     pub data: Vec<T>,
