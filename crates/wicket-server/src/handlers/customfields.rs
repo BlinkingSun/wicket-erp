@@ -6,18 +6,20 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value as JsonValue, json};
 use uuid::Uuid;
 use wicket_core::{Identifier, ItemId};
 use wicket_customfields::{
-    DatePrecision, Definition, DefinitionId, DefinitionSpec, FieldType, Value, ValueWire,
+    DatePrecision, Definition, DefinitionId, DefinitionSpec, DefinitionStatus, FieldType, Value,
+    ValueWire,
 };
 use wicket_db::Tx;
 use wicket_statemachine::Engine;
 
 use crate::boot::AppState;
-use crate::envelope::error_response;
+use crate::envelope::{ListBody, error_response};
 use crate::error::{Error, Result};
 use crate::extract::{self, require_if_match};
 use crate::idempotency;
@@ -291,18 +293,55 @@ async fn merge_item_fields(tx: &mut Tx<'_>, item: ItemId) -> Result<Vec<ValueWir
 }
 
 fn fields_envelope(fields: Vec<ValueWire>) -> Result<JsonValue> {
-    Ok(json!({
-        "data": fields,
-        "next_cursor": null,
-        "has_more": false,
-    }))
+    Ok(serde_json::to_value(&ListBody {
+        data: fields,
+        next_cursor: None,
+        has_more: false,
+    })?)
 }
 
-#[derive(Debug, Deserialize)]
-struct DefineBody {
+fn field_type_token_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    let tokens = [
+        FieldType::String,
+        FieldType::Text,
+        FieldType::Integer,
+        FieldType::Decimal,
+        FieldType::Bool,
+        FieldType::Date,
+        FieldType::Enum,
+        FieldType::Reference,
+    ]
+    .into_iter()
+    .map(|ty| serde_json::Value::from(ty.as_str()))
+    .collect();
+    schemars::schema::SchemaObject {
+        instance_type: Some(schemars::schema::InstanceType::String.into()),
+        enum_values: Some(tokens),
+        ..Default::default()
+    }
+    .into()
+}
+
+fn retired_status_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    schemars::schema::SchemaObject {
+        instance_type: Some(schemars::schema::InstanceType::String.into()),
+        enum_values: Some(vec![serde_json::Value::from(
+            DefinitionStatus::Retired.as_str(),
+        )]),
+        ..Default::default()
+    }
+    .into()
+}
+
+/// POST `/api/v1/customfields/definitions` body.
+///
+/// `type` is [`FieldType::as_str`] (`"string"`). `id`, when present, is rejected.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DefineBody {
     entity: String,
     key: String,
     #[serde(rename = "type")]
+    #[schemars(schema_with = "field_type_token_schema")]
     field_type: String,
     label: String,
     #[serde(default)]
@@ -314,6 +353,15 @@ struct DefineBody {
     owner_module: String,
     #[serde(default)]
     id: Option<String>,
+}
+
+/// POST `/api/v1/customfields/definitions` 201 body. Subset of [`Definition`].
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct DefineResponse {
+    #[schemars(with = "uuid::Uuid")]
+    id: String,
+    entity: String,
+    key: String,
 }
 
 /// POST /api/v1/customfields/definitions
@@ -374,11 +422,11 @@ async fn define_inner(
     let entity = spec.entity.clone();
     let field_key = spec.key.clone();
     let id = wicket_customfields::define(&mut tx, spec).await?;
-    let payload = json!({
-        "id": id.as_uuid().to_string(),
-        "entity": entity,
-        "key": field_key,
-    });
+    let payload = serde_json::to_value(&DefineResponse {
+        id: id.as_uuid().to_string(),
+        entity,
+        key: field_key,
+    })?;
     idempotency::remember(&mut tx, key, &hash, 201, &payload).await?;
     tx.commit().await?;
     Ok((201, payload))
@@ -431,11 +479,11 @@ async fn definitions_for_inner(
     let defs = wicket_customfields::definitions_for(&mut tx, entity).await;
     tx.rollback().await?;
     let defs = defs?;
-    Ok(json!({
-        "data": defs,
-        "next_cursor": null,
-        "has_more": false,
-    }))
+    Ok(serde_json::to_value(&ListBody {
+        data: defs,
+        next_cursor: None,
+        has_more: false,
+    })?)
 }
 
 /// POST /api/v1/customfields/definitions/{id}/retire
@@ -488,25 +536,40 @@ async fn retire_inner(
         return Ok(replay);
     }
     wicket_customfields::retire(&mut tx, &engine, def_id, &ctx).await?;
-    let payload = json!({
-        "id": def_id.as_uuid().to_string(),
-        "status": "retired",
-    });
+    let payload = serde_json::to_value(&RetireResponse {
+        id: def_id.as_uuid().to_string(),
+        status: DefinitionStatus::Retired.as_str().to_owned(),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &payload).await?;
     tx.commit().await?;
     Ok((200, payload))
 }
 
-#[derive(Debug, Deserialize)]
-struct FieldWrite {
+/// POST `/api/v1/customfields/definitions/{id}/retire` body.
+///
+/// `status` is [`DefinitionStatus::as_str`] (`"retired"`), not the enum serde
+/// name `"Retired"`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct RetireResponse {
+    #[schemars(with = "uuid::Uuid")]
+    id: String,
+    #[schemars(schema_with = "retired_status_schema")]
+    status: String,
+}
+
+/// One field in [`SetBody`]. `type` is [`FieldType::as_str`].
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FieldWrite {
     key: String,
     #[serde(rename = "type")]
+    #[schemars(schema_with = "field_type_token_schema")]
     field_type: String,
     value: JsonValue,
 }
 
-#[derive(Debug, Deserialize)]
-struct SetBody {
+/// PUT `/api/v1/items/{id}/custom-fields` body.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct SetBody {
     fields: Vec<FieldWrite>,
 }
 
@@ -601,4 +664,98 @@ async fn get_item_fields_inner(
     let fields = merge_item_fields(&mut tx, item_id).await;
     tx.rollback().await?;
     fields_envelope(fields?)
+}
+
+#[cfg(test)]
+mod wire_freeze {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn request_type_tokens_match_value_wire() {
+        let body = serde_json::to_value(schemars::schema_for!(DefineBody)).expect("define");
+        let write = serde_json::to_value(schemars::schema_for!(FieldWrite)).expect("write");
+        let wire = serde_json::to_value(schemars::schema_for!(ValueWire)).expect("wire");
+        assert_eq!(
+            body["properties"]["type"]["enum"],
+            wire["properties"]["type"]["enum"]
+        );
+        assert_eq!(
+            write["properties"]["type"]["enum"],
+            wire["properties"]["type"]["enum"]
+        );
+        assert_eq!(body["properties"]["type"]["enum"][0], "string");
+    }
+
+    #[test]
+    fn define_response_matches_legacy_blob() {
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let entity = "items.item";
+        let key = "shop_note";
+        let blob = json!({
+            "id": id,
+            "entity": entity,
+            "key": key,
+        });
+        let typed = serde_json::to_value(&DefineResponse {
+            id: id.to_owned(),
+            entity: entity.to_owned(),
+            key: key.to_owned(),
+        })
+        .expect("json");
+        assert_eq!(blob, typed);
+    }
+
+    #[test]
+    fn retire_response_matches_legacy_blob() {
+        let id = "01234567-89ab-4def-8123-456789abcdef";
+        let blob = json!({
+            "id": id,
+            "status": "retired",
+        });
+        let typed = serde_json::to_value(&RetireResponse {
+            id: id.to_owned(),
+            status: DefinitionStatus::Retired.as_str().to_owned(),
+        })
+        .expect("json");
+        assert_eq!(blob, typed);
+        assert_ne!(
+            serde_json::to_value(DefinitionStatus::Retired).expect("json"),
+            json!("retired")
+        );
+    }
+
+    #[test]
+    fn fields_envelope_matches_legacy_blob() {
+        let fields = vec![ValueWire {
+            key: "shop_note".into(),
+            type_name: "string".into(),
+            value: json!("hello"),
+            definition_version: 1,
+        }];
+        let blob = json!({
+            "data": fields,
+            "next_cursor": null,
+            "has_more": false,
+        });
+        let typed = fields_envelope(fields).expect("json");
+        assert_eq!(blob, typed);
+    }
+
+    #[test]
+    fn definitions_envelope_matches_legacy_blob() {
+        let defs: Vec<Definition> = Vec::new();
+        let blob = json!({
+            "data": defs,
+            "next_cursor": null,
+            "has_more": false,
+        });
+        let typed = serde_json::to_value(&ListBody {
+            data: defs,
+            next_cursor: None,
+            has_more: false,
+        })
+        .expect("json");
+        assert_eq!(blob, typed);
+    }
 }

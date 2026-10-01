@@ -2384,6 +2384,7 @@ dependencies = [
  "chrono",
  "proptest",
  "rust_decimal",
+ "schemars",
  "serde",
  "serde_json",
  "sqlx",
