@@ -19,6 +19,7 @@ use crate::error::{Error, Result};
 use crate::extract;
 use crate::idempotency;
 use crate::session::{self, write_context};
+use wicket_module::{ManifestModule, SignatureEdge};
 
 use axum::body::Bytes;
 
@@ -51,6 +52,140 @@ pub struct LoginResponse {
 pub struct NavigationBody {
     visible: Vec<String>,
     hidden: Vec<String>,
+}
+
+/// GET `/api/v1/openapi.json` — the OpenAPI 3.0.3 document (self-describing JSON object).
+///
+/// Schema-only: the handler still returns `Json<Value>` of [`crate::openapi::document`].
+#[derive(Debug, JsonSchema)]
+pub struct OpenApiDocument {}
+
+/// GET `/api/v1/iq/manifest` body.
+///
+/// This is the live `json!` blob, not [`wicket_module::ConfigurationManifest`]: the
+/// handler omits `app_version`. Field order is alphabetical so `Json(self)` matches
+/// `serde_json::json!` (`Map` is `BTreeMap` without `preserve_order`).
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ValidationManifestBody {
+    content_hash: String,
+    kernel_order: Vec<String>,
+    modules: Vec<ManifestModuleBody>,
+    profile_id: String,
+    signature_edges: Vec<SignatureEdgeBody>,
+    spec_version: String,
+}
+
+/// Wire shape of one interpolated `ManifestModule` (keys sorted by `json!`).
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ManifestModuleBody {
+    enabled: bool,
+    id: String,
+    regulated: bool,
+    version: String,
+}
+
+impl From<ManifestModule> for ManifestModuleBody {
+    fn from(m: ManifestModule) -> Self {
+        Self {
+            enabled: m.enabled,
+            id: m.id,
+            regulated: m.regulated,
+            version: m.version,
+        }
+    }
+}
+
+/// Wire shape of interpolated [`SignatureEdge`] (externally tagged; inner keys sorted).
+#[derive(Debug, Serialize, JsonSchema)]
+pub enum SignatureEdgeBody {
+    /// `SignatureEdge::Required`.
+    Required {
+        /// Edge name.
+        edge: String,
+        /// Meaning.
+        meaning: String,
+        /// Module / document type.
+        module: String,
+        /// Permission key.
+        permission: String,
+    },
+    /// `SignatureEdge::NotRequired`.
+    NotRequired {
+        /// Edge name.
+        edge: String,
+        /// Module / document type.
+        module: String,
+        /// Reason.
+        reason: String,
+    },
+}
+
+impl From<SignatureEdge> for SignatureEdgeBody {
+    fn from(edge: SignatureEdge) -> Self {
+        match edge {
+            SignatureEdge::Required {
+                module,
+                edge,
+                meaning,
+                permission,
+            } => Self::Required {
+                edge,
+                meaning,
+                module,
+                permission,
+            },
+            SignatureEdge::NotRequired {
+                module,
+                edge,
+                reason,
+            } => Self::NotRequired {
+                edge,
+                module,
+                reason,
+            },
+        }
+    }
+}
+
+/// GET `/api/v1/audit` body.
+///
+/// Not [`wicket_audit::Head`]: the wire omits `hash` and `sealed_at`. Inner keys
+/// match the `json!` blob (alphabetical). `head` is always present (`null` when
+/// the chain has no seal). A derived `Option` omits the key from `required`;
+/// [`audit_head_schema`] keeps the key required and the value nullable.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct AuditExportBody {
+    #[schemars(schema_with = "audit_head_schema")]
+    head: Option<AuditHeadBody>,
+}
+
+/// Schema for [`AuditExportBody::head`]: object or `null`, key always present.
+fn audit_head_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    let head = generator.subschema_for::<AuditHeadBody>();
+    schemars::schema::SchemaObject {
+        subschemas: Some(Box::new(schemars::schema::SubschemaValidation {
+            any_of: Some(vec![
+                head,
+                schemars::schema::SchemaObject {
+                    instance_type: Some(schemars::schema::InstanceType::Null.into()),
+                    ..Default::default()
+                }
+                .into(),
+            ]),
+            ..Default::default()
+        })),
+        ..Default::default()
+    }
+    .into()
+}
+
+/// Nested `head` object on [`AuditExportBody`].
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct AuditHeadBody {
+    chain_algo: String,
+    row_count: i32,
+    seq: i64,
+    xid: String,
 }
 
 async fn login_inner(
@@ -197,14 +332,22 @@ pub async fn manifest(State(state): State<AppState>, headers: H) -> Response {
         return error_response(e, &request_id);
     }
     match crate::boot::live_manifest(state.pool()).await {
-        Ok(m) => Json(json!({
-            "profile_id": m.profile_id,
-            "spec_version": m.spec_version,
-            "content_hash": m.content_hash,
-            "modules": m.modules,
-            "signature_edges": m.signature_edges,
-            "kernel_order": m.kernel_order,
-        }))
+        Ok(m) => Json(ValidationManifestBody {
+            content_hash: m.content_hash,
+            kernel_order: m.kernel_order,
+            modules: m
+                .modules
+                .into_iter()
+                .map(ManifestModuleBody::from)
+                .collect(),
+            profile_id: m.profile_id,
+            signature_edges: m
+                .signature_edges
+                .into_iter()
+                .map(SignatureEdgeBody::from)
+                .collect(),
+            spec_version: m.spec_version,
+        })
         .into_response(),
         Err(e) => error_response(e, &request_id),
     }
@@ -233,14 +376,14 @@ pub async fn audit_export(State(state): State<AppState>, headers: H) -> Response
         return error_response(e, &request_id);
     }
     match wicket_audit::head(state.pool()).await {
-        Ok(head) => Json(json!({
-            "head": head.map(|h| json!({
-                "seq": h.seq,
-                "xid": h.xid,
-                "row_count": h.row_count,
-                "chain_algo": h.chain_algo,
-            })),
-        }))
+        Ok(head) => Json(AuditExportBody {
+            head: head.map(|h| AuditHeadBody {
+                chain_algo: h.chain_algo,
+                row_count: h.row_count,
+                seq: h.seq,
+                xid: h.xid,
+            }),
+        })
         .into_response(),
         Err(e) => error_response(e.into(), &request_id),
     }
@@ -248,4 +391,116 @@ pub async fn audit_export(State(state): State<AppState>, headers: H) -> Response
 
 pub async fn health() -> &'static str {
     crate::version()
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn validation_manifest_matches_legacy_json_blob() {
+        let modules = vec![ManifestModule {
+            id: "mod-items".into(),
+            version: "0.1.0".into(),
+            enabled: true,
+            regulated: false,
+        }];
+        let signature_edges = vec![
+            SignatureEdge::NotRequired {
+                module: "lot".into(),
+                edge: "release".into(),
+                reason: "not required".into(),
+            },
+            SignatureEdge::Required {
+                module: "document".into(),
+                edge: "approve".into(),
+                meaning: "Approved".into(),
+                permission: "documents.approve".into(),
+            },
+        ];
+        let blob = json!({
+            "profile_id": "plain-shop",
+            "spec_version": "1.0.0",
+            "content_hash": "abc",
+            "modules": modules,
+            "signature_edges": signature_edges,
+            "kernel_order": ["wicket-db"],
+        });
+        let typed = ValidationManifestBody {
+            content_hash: "abc".into(),
+            kernel_order: vec!["wicket-db".into()],
+            modules: modules.into_iter().map(ManifestModuleBody::from).collect(),
+            profile_id: "plain-shop".into(),
+            signature_edges: signature_edges
+                .into_iter()
+                .map(SignatureEdgeBody::from)
+                .collect(),
+            spec_version: "1.0.0".into(),
+        };
+        assert_eq!(
+            serde_json::to_vec(&typed).unwrap(),
+            serde_json::to_vec(&blob).unwrap()
+        );
+    }
+
+    #[test]
+    fn audit_export_matches_legacy_json_blob() {
+        let blob_some = json!({
+            "head": {
+                "seq": 8_i64,
+                "xid": "9471619",
+                "row_count": 1_i32,
+                "chain_algo": "wicket-audit-1",
+            }
+        });
+        let typed_some = AuditExportBody {
+            head: Some(AuditHeadBody {
+                chain_algo: "wicket-audit-1".into(),
+                row_count: 1,
+                seq: 8,
+                xid: "9471619".into(),
+            }),
+        };
+        assert_eq!(
+            serde_json::to_vec(&typed_some).unwrap(),
+            serde_json::to_vec(&blob_some).unwrap()
+        );
+
+        let blob_none = json!({ "head": null });
+        let typed_none = AuditExportBody { head: None };
+        assert_eq!(
+            serde_json::to_vec(&typed_none).unwrap(),
+            serde_json::to_vec(&blob_none).unwrap()
+        );
+    }
+
+    #[test]
+    fn audit_head_schema_key_is_required() {
+        let root = schemars::schema_for!(AuditExportBody);
+        let v = serde_json::to_value(&root).unwrap();
+        let schema = v.get("schema").cloned().unwrap_or(v);
+        let required = schema
+            .get("required")
+            .and_then(|r| r.as_array())
+            .cloned()
+            .unwrap_or_default();
+        assert!(
+            required.iter().any(|x| x.as_str() == Some("head")),
+            "head is always on the wire: {schema}"
+        );
+    }
+
+    #[test]
+    fn openapi_document_schema_is_generic_object() {
+        let root = schemars::schema_for!(OpenApiDocument);
+        let v = serde_json::to_value(&root).unwrap();
+        let schema = v.get("schema").cloned().unwrap_or(v);
+        assert_eq!(schema.get("type").and_then(|t| t.as_str()), Some("object"));
+        assert!(
+            schema.get("additionalProperties").is_none(),
+            "a closed object would reject the document: {schema}"
+        );
+        assert!(schema.get("properties").is_none(), "{schema}");
+    }
 }
