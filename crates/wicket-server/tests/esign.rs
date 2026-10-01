@@ -6,10 +6,11 @@ mod common;
 
 use axum::http::StatusCode;
 use common::{NOPERM_PASSWORD, NOPERM_USER, PASSWORD, SIGNING_SECRET, USERNAME};
-use serde_json::json;
+use serde_json::{Value, json};
 use sqlx::query_scalar;
 use uuid::Uuid;
 use wicket_module::Profile;
+use wicket_server::{capabilities, schema_bindings};
 
 fn profiles() -> [Profile; 2] {
     [
@@ -49,6 +50,13 @@ async fn esign_http_under_both_profiles() {
             "v1 two components, got {ch}"
         );
         assert_eq!(ch["credential_kind"], "signing_password");
+        let challenge_back: wicket_esign::Challenge =
+            serde_json::from_value(ch.clone()).expect("challenge crate type");
+        assert_eq!(
+            serde_json::to_value(&challenge_back).expect("challenge json"),
+            ch,
+            "esignChallenge HTTP is the crate Challenge wire"
+        );
 
         let rec = Uuid::now_v7();
         let (st, minted) = w.post("/api/v1/esign/signatures", mint_body(rec)).await;
@@ -56,16 +64,34 @@ async fn esign_http_under_both_profiles() {
         let id = minted["signature"]["id"].as_str().expect("id");
         assert_eq!(minted["signature"]["meaning"], "Approved");
         assert_eq!(minted["signature"]["printed_name"], "M. Reyes");
+        let minted_back: wicket_esign::Manifestation =
+            serde_json::from_value(minted.clone()).expect("mint crate type");
+        assert_eq!(
+            serde_json::to_value(&minted_back).expect("mint json"),
+            minted,
+            "esignMint HTTP is the crate Manifestation wire"
+        );
 
         let (st, got) = w.get(&format!("/api/v1/esign/signatures/{id}")).await;
         assert_eq!(st, StatusCode::OK, "get {got}");
-        assert_eq!(got["signature"]["id"], id);
+        assert_eq!(got, minted, "getEsignSignature HTTP matches mint wire");
 
         let (st, bundle) = w
             .get(&format!("/api/v1/esign/signatures/{id}/bundle"))
             .await;
         assert_eq!(st, StatusCode::OK, "bundle {bundle}");
         assert_eq!(bundle["manifestation"]["signature"]["id"], id);
+        assert!(
+            bundle["record_content_hash"].is_array(),
+            "bundle record_content_hash is [u8; 32] on the wire, got {bundle}"
+        );
+        let bundle_back: wicket_esign::ArchivalBundle =
+            serde_json::from_value(bundle.clone()).expect("bundle crate type");
+        assert_eq!(
+            serde_json::to_value(&bundle_back).expect("bundle json"),
+            bundle,
+            "getEsignBundle HTTP is the crate ArchivalBundle wire"
+        );
 
         let key = Uuid::now_v7().to_string();
         let rec2 = Uuid::now_v7();
@@ -206,7 +232,11 @@ async fn regulated_release_refused_without_signature_succeeds_with_two_component
         )
         .await;
     assert_eq!(st, StatusCode::OK, "signed approve {approved}");
-    assert_eq!(approved["status"], "approved", "{approved}");
+    assert_eq!(
+        approved,
+        json!({"id": cal, "status": "approved"}),
+        "approveCalibration wire must stay the frozen blob {approved}"
+    );
 
     let w_plain = common::boot(Profile::plain_shop().unwrap()).await;
     assert!(
@@ -729,4 +759,357 @@ fn server_src_does_not_select_esign_schema() {
     assert!(handlers.contains("wicket_esign::signature_consumed_at"));
     assert!(handlers.contains("wicket_esign::manifestation_in_tx"));
     assert!(handlers.contains("wicket_esign::manifestation("));
+}
+
+#[test]
+fn esign_schema_bindings_cover_the_five_operations() {
+    let registered = schema_bindings();
+    let want = [
+        ("approveCalibration", false),
+        ("esignChallenge", false),
+        ("esignMint", true),
+        ("getEsignSignature", false),
+        ("getEsignBundle", false),
+    ];
+    for (id, has_request) in want {
+        assert!(
+            registered
+                .iter()
+                .any(|(got, req)| *got == id && *req == has_request),
+            "{id} has_request={has_request} missing from {registered:?}"
+        );
+    }
+}
+
+fn served_op<'a>(doc: &'a Value, id: &str) -> &'a Value {
+    let cap = capabilities()
+        .find(|c| c.id == id)
+        .unwrap_or_else(|| panic!("{id} missing from capability table"));
+    let op = &doc["paths"][cap.path][cap.method.to_ascii_lowercase()];
+    assert!(op.is_object(), "missing {id} in served document");
+    assert_eq!(op["operationId"].as_str(), Some(id));
+    op
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn served_openapi_types_esign_operations() {
+    if common::skip_if_no_pg() {
+        return;
+    }
+    let w = common::boot(Profile::plain_shop().unwrap()).await;
+    let (st, doc) = w.get("/api/v1/openapi.json").await;
+    assert_eq!(st, StatusCode::OK, "{doc}");
+
+    let challenge = served_op(&doc, "esignChallenge");
+    assert_eq!(
+        challenge["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Challenge"
+    );
+    assert!(challenge.get("requestBody").is_none());
+    assert!(
+        challenge["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .all(|p| p["name"] != "Idempotency-Key"),
+        "esignChallenge is not on the idempotency list {challenge}"
+    );
+
+    let mint = served_op(&doc, "esignMint");
+    assert_eq!(
+        mint["requestBody"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/EsignMintBody"
+    );
+    assert_eq!(
+        mint["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Manifestation"
+    );
+    assert!(
+        mint["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "Idempotency-Key"),
+        "esignMint Idempotency-Key {mint}"
+    );
+
+    let get_sig = served_op(&doc, "getEsignSignature");
+    assert_eq!(
+        get_sig["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/Manifestation"
+    );
+    assert!(
+        get_sig["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "id" && p["in"] == "path"),
+        "getEsignSignature path id {get_sig}"
+    );
+
+    let bundle = served_op(&doc, "getEsignBundle");
+    assert_eq!(
+        bundle["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/ArchivalBundle"
+    );
+    assert!(
+        bundle["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "id" && p["in"] == "path"),
+        "getEsignBundle path id {bundle}"
+    );
+
+    let approve = served_op(&doc, "approveCalibration");
+    assert_eq!(
+        approve["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+        "#/components/schemas/CalibrationApprovedBody"
+    );
+    assert!(approve.get("requestBody").is_none());
+    assert!(
+        approve["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "id" && p["in"] == "path"),
+        "approveCalibration path id {approve}"
+    );
+    assert!(
+        approve["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "If-Match"),
+        "approveCalibration If-Match {approve}"
+    );
+    assert!(
+        approve["parameters"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|p| p["name"] == "Idempotency-Key"),
+        "approveCalibration Idempotency-Key {approve}"
+    );
+
+    assert!(doc["components"]["schemas"]["Challenge"].is_object());
+    assert!(doc["components"]["schemas"]["EsignMintBody"].is_object());
+    assert!(doc["components"]["schemas"]["Manifestation"].is_object());
+    assert!(doc["components"]["schemas"]["ArchivalBundle"].is_object());
+    assert!(doc["components"]["schemas"]["CalibrationApprovedBody"].is_object());
+    let bundle_hash =
+        &doc["components"]["schemas"]["ArchivalBundle"]["properties"]["record_content_hash"];
+    assert_eq!(
+        bundle_hash["type"], "array",
+        "bundle hash is [u8; 32] on the wire, not hex: {bundle_hash}"
+    );
+    assert_eq!(bundle_hash["minItems"], 32);
+    assert_eq!(bundle_hash["maxItems"], 32);
+    let snapshot = &doc["components"]["schemas"]["ArchivalBundle"]["properties"]["record_snapshot"];
+    assert!(
+        snapshot.is_object() && snapshot != &json!(true),
+        "record_snapshot is any JSON, as an OpenAPI schema object: {snapshot}"
+    );
+    assert_eq!(
+        doc["components"]["schemas"]["Manifestation"]["properties"]["signature"]["allOf"][0]["$ref"],
+        "#/components/schemas/SignatureManifest"
+    );
+    assert_eq!(
+        doc["components"]["schemas"]["SignatureManifest"]["properties"]["record_content_hash"]["type"],
+        "string",
+        "manifestation record_content_hash is hex, not the bundle's byte array"
+    );
+    assert_eq!(
+        doc["components"]["schemas"]["CalibrationApprovedBody"]["properties"]["status"]["enum"],
+        json!(["approved"])
+    );
+    assert!(doc["components"]["schemas"]["EsignRecordBody"].is_object());
+    assert!(doc["components"]["schemas"]["EsignIdentBody"].is_object());
+    assert!(doc["components"]["schemas"]["SealRef"].is_object());
+    assert!(doc["components"]["schemas"]["AnchorRef"].is_object());
+    assert!(doc["components"]["schemas"]["ManifestRecord"].is_object());
+}
+
+/// Canonicalize volatile ids, timestamps, hex digests, and byte arrays so two
+/// boots of the same handlers compare equal. Set `WICKET_ESIGN_CAPTURE` to a
+/// file path to write the bodies; unset, this test does nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn capture_esign_wire_when_requested() {
+    let Ok(path) = std::env::var("WICKET_ESIGN_CAPTURE") else {
+        return;
+    };
+    if common::skip_if_no_pg() {
+        panic!("WICKET_ESIGN_CAPTURE set but postgres is unavailable");
+    }
+
+    let mut out = serde_json::Map::new();
+    for profile in profiles() {
+        let w = common::boot(profile.clone()).await;
+        let mut slot = serde_json::Map::new();
+        let (st, ch) = w.post("/api/v1/esign/challenges", json!({})).await;
+        assert_eq!(st, StatusCode::OK, "challenge {ch}");
+        slot.insert("esignChallenge".into(), canon_op(st, &ch));
+
+        let rec = Uuid::now_v7();
+        let (st, minted) = w.post("/api/v1/esign/signatures", mint_body(rec)).await;
+        assert_eq!(st, StatusCode::CREATED, "mint {minted}");
+        slot.insert("esignMint".into(), canon_op(st, &minted));
+        let id = minted["signature"]["id"].as_str().expect("id").to_string();
+
+        let (st, got) = w.get(&format!("/api/v1/esign/signatures/{id}")).await;
+        assert_eq!(st, StatusCode::OK, "get {got}");
+        slot.insert("getEsignSignature".into(), canon_op(st, &got));
+
+        let (st, bundle) = w
+            .get(&format!("/api/v1/esign/signatures/{id}/bundle"))
+            .await;
+        assert_eq!(st, StatusCode::OK, "bundle {bundle}");
+        slot.insert("getEsignBundle".into(), canon_op(st, &bundle));
+
+        if let Some(cal) = w.calibration_doc.clone() {
+            let (st, minted_cal) = w
+                .post(
+                    "/api/v1/esign/signatures",
+                    mint_body(Uuid::parse_str(&cal).expect("cal uuid")),
+                )
+                .await;
+            assert_eq!(st, StatusCode::CREATED, "cal mint {minted_cal}");
+            let sig_id = minted_cal["signature"]["id"]
+                .as_str()
+                .expect("sig")
+                .to_string();
+            let (st, _, approved) = w
+                .call(
+                    "POST",
+                    &format!("/api/v1/calibration/certificates/{cal}/approve"),
+                    Some(vec![
+                        ("if-match", "\"1\"".into()),
+                        ("x-wicket-signature", sig_id),
+                    ]),
+                    Some(json!({})),
+                )
+                .await;
+            assert_eq!(st, StatusCode::OK, "approve {approved}");
+            slot.insert("approveCalibration".into(), canon_op(st, &approved));
+        }
+
+        let (st, doc) = w.get("/api/v1/openapi.json").await;
+        assert_eq!(st, StatusCode::OK, "openapi");
+        let mut schemas = serde_json::Map::new();
+        for id in [
+            "approveCalibration",
+            "esignChallenge",
+            "esignMint",
+            "getEsignSignature",
+            "getEsignBundle",
+        ] {
+            let op = capture_served_op(&doc, id);
+            schemas.insert(
+                id.into(),
+                json!({
+                    "requestBody": op.get("requestBody").cloned().unwrap_or(Value::Null),
+                    "response200": op["responses"]["200"]["content"].clone(),
+                    "parameters": op.get("parameters").cloned().unwrap_or(Value::Null),
+                }),
+            );
+        }
+        let openapi_path = format!("{path}.{}.openapi.json", profile_key(&profile));
+        std::fs::write(
+            &openapi_path,
+            serde_json::to_string_pretty(&schemas).expect("openapi json"),
+        )
+        .expect("write openapi slice");
+
+        out.insert(profile_key(&profile).into(), Value::Object(slot));
+    }
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&out).expect("wire json"),
+    )
+    .expect("write wire");
+}
+
+fn capture_served_op<'a>(doc: &'a Value, id: &str) -> &'a Value {
+    let cap = wicket_server::capabilities()
+        .find(|c| c.id == id)
+        .unwrap_or_else(|| panic!("{id} missing from capability table"));
+    let op = &doc["paths"][cap.path][cap.method.to_ascii_lowercase()];
+    assert!(op.is_object(), "missing {id} in served document");
+    op
+}
+
+fn profile_key(profile: &Profile) -> &'static str {
+    match profile.id {
+        wicket_module::ProfileId::PlainShop => "plain-shop",
+        wicket_module::ProfileId::RegulatedDevice => "regulated-device",
+    }
+}
+
+fn canon_op(status: StatusCode, body: &Value) -> Value {
+    json!({"status": status.as_u16(), "body": canon(body)})
+}
+
+fn canon(v: &Value) -> Value {
+    match v {
+        Value::String(s) => Value::String(canon_str(s)),
+        Value::Array(items) => {
+            if !items.is_empty() && items.iter().all(Value::is_number) {
+                json!({"$bytes": items.len()})
+            } else {
+                Value::Array(items.iter().map(canon).collect())
+            }
+        }
+        Value::Object(map) => {
+            let mut out = serde_json::Map::new();
+            for (k, val) in map {
+                // Postgres transaction ids change every mint. The field stays.
+                if k == "xid" {
+                    out.insert(k.clone(), Value::String("XID".into()));
+                } else {
+                    out.insert(k.clone(), canon(val));
+                }
+            }
+            Value::Object(out)
+        }
+        other => other.clone(),
+    }
+}
+
+fn canon_str(s: &str) -> String {
+    if is_uuid(s) {
+        return "UUID".into();
+    }
+    if s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return "HEX".into();
+    }
+    if is_rfc3339(s) {
+        return "TS".into();
+    }
+    s.to_string()
+}
+
+fn is_uuid(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() != 36 {
+        return false;
+    }
+    for (i, c) in b.iter().enumerate() {
+        let dash = matches!(i, 8 | 13 | 18 | 23);
+        if dash && *c != b'-' {
+            return false;
+        }
+        if !dash && !c.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    true
+}
+
+fn is_rfc3339(s: &str) -> bool {
+    let b = s.as_bytes();
+    if b.len() < 20 || b.len() > 40 || !b[0].is_ascii_digit() || !s.contains('T') {
+        return false;
+    }
+    b.iter()
+        .all(|c| c.is_ascii_digit() || matches!(*c, b'-' | b':' | b'T' | b'Z' | b'+' | b'.'))
 }
