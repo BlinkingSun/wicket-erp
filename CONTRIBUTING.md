@@ -100,8 +100,16 @@ Propose the module first with the module-proposal issue form. Writing it before 
 
 ## 6. Code rules
 
-- `just ci` is the offline lint and library-test gate (`fmt-check`, `clippy`, `lint-sql`, `test-lib`; `PLAN.md` §11). It must be green before a pull request is opened. `test-lib` passes `--lib` and excludes every integration test under `crates/*/tests/`. Green `just ci` is not slice acceptance.
-- Slice, kernel, SQL, and schema work must also have `just ci-db` green. `just ci-db` is the Wave 2s / slice acceptance gate (`crates/wicket-server/tests/slice.rs`). A documentation-only change does not require it.
+- `just ci` is the lint and library-test gate (`fmt-check`, `clippy`, `lint-sql`, `lint-mounts`, `lint-module-manifests`, `lint-openapi-fixture`, `lint-openapi-document`, `test-lib`; `justfile`). It must be green before a pull request is opened. `test-lib` passes `--lib` and excludes every integration test under `crates/*/tests/`. Green `just ci` is not slice acceptance.
+- Slice, kernel, SQL, and schema work must also have `just ci-db` green. `just ci-db` is the Wave 2s / slice acceptance gate (`crates/wicket-server/tests/slice.rs`). A documentation-only change does not require it. A lane that runs `just ci-db` must export the block below with its own database names. Concurrent lanes must change `wicket_tpl_<lane>`, `wicket_<lane>`, and `/tmp/wicket-blobs-<lane>`. Why the names are per worktree is in `crates/wicket-test/README.md` under "Per-worktree isolation".
+
+```bash
+export WICKET_TEST_TEMPLATE=wicket_tpl_<lane> WICKET_TEST_DB=wicket_<lane> \
+  WICKET_DATABASE_URL="postgres://wicket_app:wicket@127.0.0.1:5432/wicket_<lane>?sslmode=disable" \
+  WICKET_MIGRATE_DATABASE_URL="postgres://wicket_migrate:wicket@127.0.0.1:5432/wicket_<lane>?sslmode=disable" \
+  WICKET_BOOTSTRAP_URL="postgres://127.0.0.1:5432/postgres?sslmode=disable" \
+  WICKET_BLOB_ROOT=/tmp/wicket-blobs-<lane> WICKET_PROFILE=plain-shop WICKET_REQUIRE_PG=1
+```
 - No `unsafe`.
 - No `todo!()` on `main`.
 - Every migration has a tested reverse (`PLAN.md` §6 invariant 8).

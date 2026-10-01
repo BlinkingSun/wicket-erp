@@ -24,9 +24,9 @@ The UI is a **wrapper**: a client of that HTTP surface and nothing else (ADR 000
 - A breaking change on the wire breaks every wrapper the same way.
 - Regulatory record properties (audit, signatures, ledger) stay in the engine. A screen change cannot change a historical document (ADR 0009: the UI is not a renderer).
 
-The first-party application is `apps/wicket-web/` (TypeScript, React, TanStack Query / Table / Router). ADR 0009 binds **one generated TypeScript client** from the served OpenAPI document. That client is not generable yet: the served document has operation ids, permissions, parameters, and an `ErrorEnvelope` schema, and it does not have `requestBody` or response `content` (`crates/wicket-server/src/openapi.rs`; ADR 0011). The first-party screens call `fetch` by hand (`apps/wicket-web/src/api/http.ts`).
+The first-party application is `apps/wicket-web/` (TypeScript, React, TanStack Query / Table / Router). ADR 0009 binds **one generated TypeScript client** from the served OpenAPI document. That client is `apps/wicket-web/src/api/generated/openapi.ts`, generated from `crates/wicket-server/tests/fixtures/openapi-document.json` by `just openapi-client`. The first-party screens still perform `fetch` in `apps/wicket-web/src/api/http.ts`.
 
-The engine process does **not** serve `apps/wicket-web`. `crates/wicket-server/src/http.rs` mounts only the capability table. A reverse proxy that colocates the SPA and `/api/v1` is how a browser stays same-origin today. CORS headers are ABSENT (no `tower_http::cors`, no `Access-Control-*` in `crates/wicket-server`).
+The engine serves the SPA when `WICKET_UI_ROOT` is set to a directory that contains `index.html` (`docs/12-configuration.md`; `crates/wicket-server/src/http.rs:148-152`). Unset, `ui_root()` is absent and a non-API path, including `index.html`, is 404: API only. CORS headers are ABSENT (no `tower_http::cors`, no `Access-Control-*` in `crates/wicket-server`).
 
 ---
 
@@ -36,7 +36,7 @@ Do not hardcode the operation set. Two documents tell a client what this deploym
 
 ### 2.1 The capability table
 
-The registry is `crates/wicket-server/src/capabilities.rs`. It is 65 rows (`KERNEL` + `MODULE`). Each row is an OpenAPI `operationId`, HTTP method, path, permission key (empty string means unauthenticated), and, for state-machine edges, `edge` + `doc_type`.
+The registry is `crates/wicket-server/src/capabilities.rs`. It is 72 rows: 42 `kernel(` rows in `KERNEL` and 30 `module(` rows in `MODULE` (`table_has_the_mounted_count` at `capabilities.rs:830-834`; `crates/wicket-server/tests/slice.rs:1917`). Each row is an OpenAPI `operationId`, HTTP method, path, permission key (empty string means unauthenticated), and, for state-machine edges, `edge` + `doc_type`.
 
 `crates/wicket-server/src/http.rs` builds the Axum router by walking that table. `crates/wicket-server/src/openapi.rs` builds the served document from the same walk (ADR 0010).
 
@@ -58,10 +58,11 @@ Operation id `getOpenApi`. Unauthenticated (`permission` is `""` in `capabilitie
 | `paths.{path}.{method}.x-wicket-permission` | capability `permission` (empty string if unauthenticated) |
 | `paths.{path}.{method}.x-wicket-signature` | `{ meaning, permission }` when the profile has a `SignatureEdge::Required` for that `(doc_type, edge)` |
 | `paths.{path}.{method}.parameters` | path placeholders, the query list in §4.3, and required headers `Idempotency-Key` / `If-Match` / `X-Wicket-Signature` where the per-id lists in `openapi.rs` say so |
-| `paths.{path}.{method}.responses` | bare descriptions for 200, 201, 400, 401, 403, 404, 409. No `content`. |
-| `components.schemas` | `ErrorEnvelope` only |
+| `paths.{path}.{method}.requestBody` | an `application/json` schema on 28 operations; absent on the rest |
+| `paths.{path}.{method}.responses` | 70 of 72 operations have a 200 `application/json` schema. `health`'s 200 is description `ok` and no `content`. `logout` has no 200 JSON schema. Other statuses are bare descriptions |
+| `components.schemas` | 114 schemas, including `ErrorEnvelope` |
 
-There is no `requestBody`. A generated client from this document is named functions over untyped `fetch` (ADR 0009 acceptance note; ADR 0011). T-35 Wave 0 landed parameters; typed bodies have not.
+70 of 72 operations are typed on both `plain-shop` and `regulated-device`: a 200 `application/json` schema object is present. The remainder is `health` and `logout`. The counts are the committed fixtures `crates/wicket-server/tests/fixtures/openapi-document.json` and `openapi-document-regulated.json` (the served document matches those fixtures, `crates/wicket-server/tests/openapi_document.rs:30-43`). The generated client is `apps/wicket-web/src/api/generated/openapi.ts`. T-35 stays open until `health` and `logout` are typed.
 
 `setLotStatus` never receives `x-wicket-signature` in the document: `openapi.rs` `required_signature` returns `None` for that id because one handler serves release/hold/reject.
 
@@ -554,7 +555,7 @@ ADR 0009 already chose the stack. This section does not re-litigate it.
 |---|---|
 | First-party Vite dev | Browser origin is the Vite server. `/api` is proxied to `WICKET_API_ORIGIN` or `http://127.0.0.1:8080` (`apps/wicket-web/vite.config.ts`). `VITE_API_BASE` defaults to `""` (`apps/wicket-web/src/api/http.ts`), so `fetch` is same-origin. |
 | Engine bind | `WICKET_BIND` / `--bind` / TOML `bind`, default `0.0.0.0:8080` (`config.rs`). |
-| Production browser | ABSENT as a first-party story: the engine does not serve the SPA, and CORS is ABSENT. A reverse proxy that serves the UI and `/api/v1` from one origin is the configuration that works with cookies. |
+| Production browser | `WICKET_UI_ROOT` unset: the engine does not serve `index.html` (API only). Set: the engine serves the SPA from that directory (`http.rs:148-152`; `docs/12-configuration.md`). CORS is ABSENT. A reverse proxy that serves the UI and `/api/v1` from one origin still works with cookies. |
 | Native / Tauri | Must be configured with the engine origin. LAN discovery (mDNS, USB, QR) is ABSENT. |
 | Other-device browser | A page whose origin is not the engine cannot `fetch` it: no `Access-Control-Allow-Origin`. |
 

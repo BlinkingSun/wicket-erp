@@ -54,7 +54,7 @@ A lane that cannot fill every row must not start.
 | Goal 4 | Answer, or `none` with a reason (`GOALS.md` §4). |
 | Owns | Exclusive list of files this lane writes. An empty list is not a start. |
 | Does not claim | What this change leaves untrue. |
-| Green command | The exact command that must pass. Slice work is `just ci-db`. `just ci` is not that command. |
+| Green command | The exact command that must pass. Slice work is `just ci-db`. `just ci` is not that command. A lane that runs `just ci-db` must export the block in `CONTRIBUTING.md` §6 with its own database names. |
 | Docs | The documentation patch in the same change if an operator or contributor is otherwise misled (`GOALS.md` DOC-4). |
 
 The four-goal CI check on pull-request bodies is `scripts/check-pr-goals.sh`
