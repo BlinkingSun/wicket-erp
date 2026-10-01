@@ -13,9 +13,20 @@ this crate may use session-protocol SQL; it never ships in the binary.
 - `TestDb::begin` — transaction that the test must commit or roll back (never auto-rollback)
 - `TestDb::finish` — `DROP DATABASE … WITH (FORCE)`
 - `Error` — `Unavailable` / `Sqlx` / `Migration` / `Env`
-- `postgres_available` — `Err(reason)` if migrate URL unset or server silent for 2 s
+- `postgres_available` — `Err(reason)` if migrate URL unset or server silent for `WICKET_TEST_PG_TIMEOUT_SECS` (default 2 s)
 - `require_postgres` — panics with that reason (`WICKET_REQUIRE_PG=1`)
 - `db_case!` — skip or panic according to `WICKET_REQUIRE_PG`, then `TestDb::case`
+
+## Timeouts
+
+`WICKET_TEST_PG_TIMEOUT_SECS` (default **2**) bounds the two connect probes:
+`postgres_available` and the bootstrap connection. `WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS`
+(default **5**) bounds the sqlx pool `acquire_timeout` on the migrate, app, and
+bootstrap pools. Both are positive integer seconds. Unset or empty keeps the
+default. Zero, a negative number, or a non-integer is an error that names the
+variable. Raise them for team lanes and for CI under load.
+
+Case databases are still dropped synchronously per test because concurrent DROP DATABASE checkpoints coalesce.
 
 ## Migrations
 
@@ -35,6 +46,9 @@ None. The harness does not own schema. Template grants come from `dev/sql`.
 - `pool_hooks_reset_state`
 - `require_pg_hard_fails`
 - `error_unavailable_formats`
+- `pg_connect_timeout_secs_default_override_and_reject`
+- `pg_acquire_timeout_secs_default_override_and_reject`
+- `pg_timeout_env_reads_default_override_and_reject`
 
 ## Frozen / seams
 
