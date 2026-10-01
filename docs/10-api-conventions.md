@@ -228,8 +228,8 @@ A transition that requires a signature is marked on the operation, not discovere
 
 ```yaml
 x-wicket-signature:
-  meaning: Released
-  permission: production.work_order.release
+  meaning: Approved
+  permission: documents.approve
 ```
 
 `meaning` is the printed meaning stored on the signature row (PLAN §6b item 15: the name and the meaning are snapshots, not live joins). `permission` is the `PermissionKey` the signer must have held at mint. Operations without the extension are `NotRequired`; the configuration manifest lists both kinds (`docs/03-module-system.md` §8, D-W1-4). A `regulated = true` module cannot register an edge that is neither.
