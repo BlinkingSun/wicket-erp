@@ -11,7 +11,8 @@ use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use wicket_core::{Identifier, SignatureError};
 use wicket_db::Tx;
@@ -143,17 +144,47 @@ fn actor(session: &crate::session::HttpSession) -> wicket_core::Actor {
     }
 }
 
+// Not `DocumentBody`: `wicket_mod_inventory::DocumentBody` already uses that schemars
+// name, and `merge_type` keeps the first insert.
+/// Document response for create, get, submit, and approve. `version` is the state-machine instance version.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[schemars(rename = "ControlledDocumentBody")]
+pub struct DocumentBody {
+    id: String,
+    kind: String,
+    number: String,
+    title: String,
+    status: String,
+    retention_class: String,
+    legal_hold: bool,
+    version: i64,
+}
+
+impl DocumentBody {
+    fn from_document(doc: &Document, version: i64) -> Self {
+        Self {
+            id: doc.id.as_uuid().to_string(),
+            kind: doc.kind.clone(),
+            number: doc.number.clone(),
+            title: doc.title.clone(),
+            status: doc.status.as_str().to_string(),
+            retention_class: doc.retention_class.clone(),
+            legal_hold: doc.legal_hold,
+            version,
+        }
+    }
+}
+
 fn document_json(doc: &Document, version: i64) -> Value {
-    json!({
-        "id": doc.id.as_uuid().to_string(),
-        "kind": doc.kind,
-        "number": doc.number,
-        "title": doc.title,
-        "status": doc.status.as_str(),
-        "retention_class": doc.retention_class,
-        "legal_hold": doc.legal_hold,
-        "version": version,
-    })
+    serde_json::to_value(DocumentBody::from_document(doc, version)).expect("document body")
+}
+
+/// Wire shape for POST `/api/v1/documents/{id}/revisions` 201 response.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct DocumentRevisionBody {
+    id: String,
+    document_id: String,
+    label: String,
 }
 
 async fn instance_version(state: &AppState, tx: &mut Tx<'_>, id: DocumentId) -> Result<i64> {
@@ -171,8 +202,9 @@ async fn load_body(state: &AppState, tx: &mut Tx<'_>, id: DocumentId) -> Result<
     Ok(document_json(&doc, version))
 }
 
-#[derive(Debug, Deserialize)]
-struct DocumentCreate {
+/// POST `/api/v1/documents` body. `id` is rejected with 400 if present.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DocumentCreate {
     kind: String,
     title: String,
     retention_class: String,
@@ -265,10 +297,19 @@ async fn get_document_inner(
     body
 }
 
-#[derive(Debug, Deserialize)]
-struct RevisionCreate {
+/// Any JSON value. `schemars`' impl for [`Value`] is the boolean schema `true`, which is
+/// not an OpenAPI 3.0 Schema Object. An empty Schema Object is the same constraint.
+fn any_json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    schemars::schema::SchemaObject::default().into()
+}
+
+/// POST `/api/v1/documents/{id}/revisions` body. `id` is rejected with 400 if present.
+/// Omitted or null `content` is stored as `{}`.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RevisionCreate {
     label: String,
     #[serde(default)]
+    #[schemars(schema_with = "any_json_schema")]
     content: Value,
     #[serde(default)]
     id: Option<String>,
@@ -330,11 +371,11 @@ async fn create_revision_inner(
         .new_document_revision(&mut tx, doc_id, &body.label, Manifest::content(content))
         .await
         .map_err(docs_from_kernel)?;
-    let payload = json!({
-        "id": rev.as_uuid().to_string(),
-        "document_id": doc_id.as_uuid().to_string(),
-        "label": body.label,
-    });
+    let payload = serde_json::to_value(DocumentRevisionBody {
+        id: rev.as_uuid().to_string(),
+        document_id: doc_id.as_uuid().to_string(),
+        label: body.label.clone(),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 201, &payload).await?;
     tx.commit().await?;
     Ok((201, payload))
@@ -482,8 +523,74 @@ async fn approve_document_inner(
 
 #[cfg(test)]
 mod tests {
-    use super::envelope_arm;
+    use super::{DocumentBody, DocumentRevisionBody, RevisionCreate, envelope_arm};
     use axum::http::StatusCode;
+    use serde_json::json;
+    use wicket_core::Identifier;
+    use wicket_documents::{Document, DocumentId, Status};
+
+    #[test]
+    fn document_body_matches_legacy_json() {
+        let doc = Document {
+            id: DocumentId(Identifier::from_uuid(uuid::Uuid::nil())),
+            kind: "SOP".into(),
+            number: "DOC-0001".into(),
+            title: "Test".into(),
+            status: Status::InReview,
+            retention_class: "standard".into(),
+            legal_hold: true,
+        };
+        let legacy = json!({
+            "id": doc.id.as_uuid().to_string(),
+            "kind": doc.kind,
+            "number": doc.number,
+            "title": doc.title,
+            "status": doc.status.as_str(),
+            "retention_class": doc.retention_class,
+            "legal_hold": doc.legal_hold,
+            "version": 3_i64,
+        });
+        let wire = serde_json::to_value(DocumentBody::from_document(&doc, 3)).unwrap();
+        assert_eq!(legacy, wire);
+    }
+
+    #[test]
+    fn revision_body_matches_legacy_json() {
+        let legacy = json!({
+            "id": "00000000-0000-0000-0000-000000000001",
+            "document_id": "00000000-0000-0000-0000-000000000002",
+            "label": "A",
+        });
+        let wire = serde_json::to_value(DocumentRevisionBody {
+            id: "00000000-0000-0000-0000-000000000001".into(),
+            document_id: "00000000-0000-0000-0000-000000000002".into(),
+            label: "A".into(),
+        })
+        .unwrap();
+        assert_eq!(legacy, wire);
+    }
+
+    #[test]
+    fn revision_content_schema_is_an_openapi_object() {
+        let root = schemars::schema_for!(RevisionCreate);
+        let value = serde_json::to_value(&root).unwrap();
+        let content = value
+            .pointer("/properties/content")
+            .expect("content property");
+        assert!(
+            content.is_object(),
+            "content schema must be a Schema Object, got {content}"
+        );
+        assert!(content.as_bool().is_none());
+    }
+
+    #[test]
+    fn document_body_schema_name_is_not_inventory_document_body() {
+        assert_eq!(
+            <DocumentBody as schemars::JsonSchema>::schema_name(),
+            "ControlledDocumentBody"
+        );
+    }
 
     #[test]
     fn envelope_arm_maps_not_found() {
