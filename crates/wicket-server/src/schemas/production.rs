@@ -160,7 +160,7 @@ mod tests {
             "WoCreate",
             "IssueBody",
             "CompleteBody",
-            "WorkOrderIssueLine",
+            "ReceiptLine",
         ] {
             assert!(
                 schemas.contains_key(name),
@@ -168,6 +168,14 @@ mod tests {
                 schemas.keys().collect::<Vec<_>>()
             );
         }
+        assert!(
+            !schemas.contains_key("WorkOrderIssueLine"),
+            "IssueBody.lines must use ReceiptLine, not a schema-only mirror"
+        );
+        assert_eq!(
+            schemas["IssueBody"]["properties"]["lines"]["items"]["$ref"],
+            "#/components/schemas/ReceiptLine"
+        );
         let qty = &schemas["WorkOrderJson"]["properties"]["quantity"];
         let r = qty["$ref"].as_str().unwrap_or("");
         assert!(

@@ -1406,7 +1406,7 @@ export interface components {
         /** IssueBody */
         IssueBody: {
             from_location_id: string;
-            lines: components["schemas"]["WorkOrderIssueLine"][];
+            lines: components["schemas"]["ReceiptLine"][];
         };
         /**
          * ItemBody
@@ -2460,15 +2460,6 @@ export interface components {
             status: string;
             /** Format: int64 */
             version: number;
-        };
-        /** @description Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here). */
-        WorkOrderIssueLine: {
-            amount?: components["schemas"]["MoneyBody"] | null;
-            entered?: components["schemas"]["AnyQuantity"] | null;
-            item_id: string;
-            lot_id?: string | null;
-            package_id?: string | null;
-            quantity?: components["schemas"]["AnyQuantity"] | null;
         };
         /**
          * WorkOrderJson
