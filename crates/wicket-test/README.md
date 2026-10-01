@@ -24,7 +24,7 @@ this crate may use session-protocol SQL; it never ships in the binary.
 (default **5**) bounds the sqlx pool `acquire_timeout` on the migrate, app, and
 bootstrap pools. Both are positive integer seconds. Unset or empty keeps the
 default. Zero, a negative number, or a non-integer is an error that names the
-variable. Raise them for team lanes and for CI under load.
+variable. Raise them for team lanes and for CI under load. Measured on this machine (warm builds, `DECISION-harness-ui2.md` / `ui2-harness-min`): defaults (2 s / 5 s) are fine for a solo `just test-db` and for about three concurrent suites (**374 / 448 / 453 s**, 0 timeouts); for about six concurrent suites set **both** knobs to **30** (**6/6 EXIT 0**, 0 probe timeouts, 0 pool timeouts; walls **936–1179 s**). At **10** s on six-way stagger, one of six hit a pool timeout (`pool timed out` in `slice::if_match_on_transitions`). Deferring case drops was withdrawn (≈**590 s** solo vs **224–274 s** synchronous base).
 
 Case databases are still dropped synchronously per test because concurrent DROP DATABASE checkpoints coalesce.
 

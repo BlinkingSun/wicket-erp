@@ -19,7 +19,7 @@ the item is real.
 **Stage 0 is the contribution product, and it comes first.** It needs no decision
 from the owner. It stops documents from lying to contributors now. Do it first.
 Most of Stage 0 landed in the 2026-09-14 swarm. T-01 and T-17 closed 2026-09-15.
-**Remaining: T-13 (licence-identifier backfill), T-105 (lint the npm allowlists), T-106 (drop the npm peer-resolution escape hatch), T-107 (`just ci-db` fails closed when the migrate URL is unset), T-108 (database-suite throughput ceiling), and T-110 (item-master part number is monospace).**
+**Remaining: T-13 (licence-identifier backfill), T-105 (lint the npm allowlists), and T-106 (drop the npm peer-resolution escape hatch).**
 
 **Stage 1 is the keystone, and it is blocked on accepting
 [ADR 0010](docs/adr/0010-one-registry.md).** Seven separate items from four analyses
@@ -57,9 +57,9 @@ that are currently false.
 | T-18 | **DONE.** One writer per file per wave | S | `CONTRIBUTING.md` §7 and `AGENTS.md` state one writer per file per wave. Historical `integrate: merge` overlapping-ownership commits remain in git history; new waves must not add more |
 | T-105 | **Lint the npm allowlists** | S | A script fails when `apps/wicket-web/package.json` gains a `dependencies` entry without an accepted request for comment, and when a `devDependencies` entry is imported by shipped code. GOV-7. ABSENT |
 | T-106 | **Drop the npm peer-resolution escape hatch** | S | `apps/wicket-web/.npmrc` no longer sets `legacy-peer-deps`, because `openapi-typescript` declares a peer range that includes the TypeScript major this app is on. Until then peer resolution is off workspace-wide |
-| T-107 | `just ci-db` fails closed when `WICKET_MIGRATE_DATABASE_URL` is unset | S | The recipe prints the unset name and exits non-zero before `cargo test`, instead of panicking inside `wicket_test::require_postgres` (`crates/wicket-test/src/lib.rs:78-80`) |
-| T-108 | Database-suite throughput ceiling | M | The bootstrap connect timeout is configurable, and a test does not force one Postgres checkpoint. Today the timeout is a hardcoded 2 s (`crates/wicket-test/src/lib.rs:63` and `:397`) and each test drops its database with `DROP DATABASE … WITH (FORCE)` (`lib.rs:187`, `lib.rs:390`) |
-| T-110 | Item-master part number is monospace with tabular figures | S | `h2.item-master__number` (`apps/wicket-web/src/features/items/ItemMasterScreen.tsx:43`) uses a monospace face and tabular figures. Today `apps/wicket-web/src/features/items/items.css:24` sets margin, size, weight, and letter-spacing, and does not use `.mono` (`apps/wicket-web/src/styles/global.css:40`) |
+| T-107 | **DONE.** `just test-db` and `just ci-db` fail closed when `WICKET_MIGRATE_DATABASE_URL` is unset | S | Unset URL: both recipes `EXIT=1`, name the variable, print the CONTRIBUTING.md §6 export block, and emit no `Compiling` / `Running` lines (`ui2-harness-min` fail-closed logs). |
+| T-108 | **DONE.** Database-suite Postgres timeouts (checkpoint deferral withdrawn) | M | `WICKET_TEST_PG_TIMEOUT_SECS` (default 2) bounds connect probes; `WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS` (default 5) bounds pool acquire. The clause "a test does not force a checkpoint" was withdrawn: deferring or serializing case drops measured about 2× slower (≈590 s vs 224–274 s solo), while synchronous drops coalesce checkpoints and the base was already timeout-free at 3-way concurrency (`374 / 448 / 453 s`, 0 timeouts). For ~6 concurrent suites set both knobs to 30 (6/6 `EXIT 0`, 0 probe timeouts, 0 pool timeouts); at 10 s one of six hit a pool timeout (`DECISION-harness-ui2.md`). |
+| T-110 | **DONE.** Item-master part number is monospace with tabular figures | S | `ItemMasterScreen.tsx`: `className="item-master__number mono"` (`ui2-polish` `e282b70`). |
 
 ---
 
@@ -97,8 +97,8 @@ the wire. None of it is new functionality.
 | T-32 | Remaining machine edges | M | T-24 | Item obsolete, work-order cancel, and the document lifecycle edges each have an operation with optimistic concurrency |
 | T-33 | Job status, enqueue and cancel | M | T-24 | A job identifier returned by a trace resolves at `getGenealogyJob` (`crates/wicket-server/src/http.rs:99`). Enqueue and cancel are still unmounted |
 | T-34 | Kernel administration over HTTP | L | T-24 | Module registry, principals and roles, numbering, units of measure, and audit verification and export are reachable without linking the crate |
-| T-35 | **Wave 0 DONE** (inputs described; signature meaning reads `signature_edges`). Typed bodies: 70 of 72. Document schemas and per-edge signature meaning | L | T-25 | 70 of 72 operations carry a 200 `application/json` response schema on both profiles; every operation that parses a JSON body carries an `application/json` `requestBody` schema (28 operations); the other 42 take no JSON body and correctly have none; in both committed fixtures (`crates/wicket-server/tests/fixtures/openapi-document.json` and `crates/wicket-server/tests/fixtures/openapi-document-regulated.json`) `health` and `logout` are `200` "ok" responses with no `content` and no `requestBody`. At runtime `health` returns text/plain (`crates/wicket-server/src/handlers/kernel.rs:392`) and `logout` an empty 204 (`crates/wicket-server/src/handlers/kernel.rs:292`). The registration seam attaches content to `200` only (`crates/wicket-server/src/openapi.rs:120-126`), so the document cannot yet express either, and it shows `logout`'s status wrongly as `200`. Punch-list P17 (ui2). Signature meaning reads the edge (`crates/wicket-server/src/openapi.rs:50-68`); `setLotStatus` is omitted by id (`openapi.rs:55-57`) |
-| T-109 | Schema registration rejects a differently-shaped duplicate name | S | T-25 | A second `JsonSchema` type with the same schemars name and a different shape is a hard error. Today `merge_type` keeps the first writer (`entry().or_insert` at `crates/wicket-server/src/schemas/mod.rs:120` and `:126`) and drops the later type |
+| T-35 | **DONE.** Wave 0 inputs; signature meaning reads `signature_edges`; typed bodies 72 of 72; per-edge signature meaning | L | T-25 | All 72 operations typed on both profiles per the seam-v2 three-case rule (`plain-shop typed 72 of 72 remainder empty`, `regulated-device typed 72 of 72 remainder empty`; fixtures `openapi-document.json` / `openapi-document-regulated.json`: `health` 200 `text/plain` string, `logout` 204 no content, no `200`). Closed ui2-seam `8af2cbc`. **P17 closed** (health documented as 200 text/plain, logout as 204). Signature meaning reads the edge (`openapi.rs:50-68`); `setLotStatus` omitted by id (`openapi.rs:55-57`). |
+| T-109 | **DONE.** Schema registration rejects a differently-shaped duplicate name | S | T-25 | `insert_schema` panics on a different shape under an existing name; identical re-registration (e.g. `ListBody_for_SerialBody`) stays legal (`ui2-seam` `8af2cbc`, `schemas::tests`). |
 | T-36 | Cursor pagination and filtering on list operations | M | T-30 | Limit and cursor are honoured; no handler hard-codes a null cursor on a non-empty page |
 | T-37 | Rate limit and method-not-allowed envelope | S | — | The documented burst limit returns its error code, and an unsupported method returns the envelope. Both are specified in `docs/10-api-conventions.md` and neither is implemented |
 | T-38 | CLI twin table and allowlist | M | T-34 | Every subcommand except process lifecycle has an operation or an allowlist row with a reason |
@@ -124,9 +124,8 @@ claim in the plain-shop document was false, which for a Part 11 product is a cla
 have acted on. `setLotStatus` is omitted by id: it joins `(lot, release)` with
 `releaseFromQuarantine`, but its handler also serves `hold` and `reject`.
 
-**Wave 1 typed bodies are partial.** 70 of 72 operations carry a 200 `application/json` schema
-on both profiles (fixtures `openapi-document.json` and `openapi-document-regulated.json`).
-`health` and `logout` do not, so this row stays open. Residual from Wave 0: the header
+**Wave 1 typed bodies closed (ui2-seam `8af2cbc`, 2026-10-02).** 72 of 72 operations are typed
+on both profiles; `health` is 200 `text/plain`, `logout` is 204 (P17 closed). Residual from Wave 0: the header
 allowlists are hand-maintained and can drift from handlers; a derivation or a drift test is a
 follow-up.
 
