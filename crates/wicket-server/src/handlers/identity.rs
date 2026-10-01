@@ -110,39 +110,64 @@ fn role_wire(r: &Role) -> RoleBody {
     }
 }
 
-#[derive(Debug, Deserialize)]
+fn optional_principal_kind_json_schema(
+    _gen: &mut schemars::SchemaGenerator,
+) -> schemars::schema::Schema {
+    serde_json::from_value(json!({
+        "anyOf": [
+            {
+                "type": "string",
+                "enum": ["User", "Service", "Migration"]
+            },
+            { "type": "null" }
+        ]
+    }))
+    .expect("optional principal_kind schema")
+}
+
+/// POST `/api/v1/identity/principals` body.
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct CreatePrincipalBody {
+pub struct CreatePrincipalBody {
     username: String,
     display_name: String,
     password: String,
     #[serde(default)]
+    #[schemars(schema_with = "optional_principal_kind_json_schema")]
     principal_kind: Option<PrincipalKind>,
     #[serde(default)]
     id: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+/// POST `/api/v1/identity/principals/{id}/rename` body.
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct RenameBody {
+pub struct RenameBody {
     display_name: String,
 }
 
-#[derive(Debug, Deserialize)]
+/// Login-credential mutation bodies (`password` field).
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct PasswordBody {
+pub struct PasswordBody {
     password: String,
 }
 
-#[derive(Debug, Deserialize)]
+/// POST `/api/v1/identity/me/signing-credential` body.
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct SigningSecretBody {
+pub struct SigningSecretBody {
     secret: String,
 }
 
-#[derive(Debug, Deserialize)]
+/// Empty JSON object accepted on deactivate (empty bytes also accepted).
+#[derive(Debug, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct EmptyBody {}
+pub struct EmptyBody {}
+
+/// Idempotency replay shape and OpenAPI stand-in for HTTP 204 success (no response body).
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct NoContentJson {}
 
 /// POST /api/v1/identity/principals
 pub async fn create_principal(State(state): State<AppState>, headers: H, body: Bytes) -> Response {
