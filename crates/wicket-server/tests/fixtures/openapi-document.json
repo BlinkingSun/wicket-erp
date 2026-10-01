@@ -1,0 +1,4468 @@
+{
+  "components": {
+    "schemas": {
+      "AcceptedBody": {
+        "description": "202 Accepted body for a large trace. Served at HTTP 200 by the live handler (the two shapes share the success status; see SPEC T-35 Wave 1).",
+        "properties": {
+          "job_id": {
+            "description": "Job id.",
+            "type": "string"
+          },
+          "result_url": {
+            "description": "Result URL.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "result_url"
+        ],
+        "title": "AcceptedBody",
+        "type": "object"
+      },
+      "AnyQuantity": {
+        "properties": {
+          "amount": {
+            "type": "string"
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/DimensionKind"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/UnitId"
+          }
+        },
+        "required": [
+          "amount",
+          "dimension",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "CurrencyId": {
+        "description": "ISO 4217 numeric currency code; the catalog row lives in the database.",
+        "format": "int32",
+        "type": "integer"
+      },
+      "DimensionKind": {
+        "description": "The sealed kernel dimension set. Adding a variant is a kernel change and a migration, never a customization. Modules cannot extend it.",
+        "oneOf": [
+          {
+            "description": "Discrete count (each, dozen, …).",
+            "enum": [
+              "Count"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Linear measure.",
+            "enum": [
+              "Length"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Mass.",
+            "enum": [
+              "Mass"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Duration. Labor-hours may or may not live here; `TimeDim` exists either way.",
+            "enum": [
+              "Time"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Volume.",
+            "enum": [
+              "Volume"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Area.",
+            "enum": [
+              "Area"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Direction": {
+        "description": "Trace direction (SPEC query API).",
+        "oneOf": [
+          {
+            "description": "Recursive CTE down `consumed_posting_id` (D2 §5.3).",
+            "enum": [
+              "backward"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Reverse index up consuming postings.",
+            "enum": [
+              "forward"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Both directions from the same start.",
+            "enum": [
+              "both"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "ErrorEnvelope": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "field": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "request_id": {
+                "format": "uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "request_id"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "ExpiryPrecision": {
+        "description": "Expiry precision. A bare `DATE` is forbidden (invariant 12).",
+        "oneOf": [
+          {
+            "description": "Calendar day.",
+            "enum": [
+              "day"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Calendar month; stored as the first of that month.",
+            "enum": [
+              "month"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Calendar year; stored as 1 January.",
+            "enum": [
+              "year"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "ExpiryWire": {
+        "description": "Wire expiry `{value, precision}` (`docs/10` §3.4). Month/year omit an invented day.",
+        "properties": {
+          "precision": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExpiryPrecision"
+              }
+            ],
+            "description": "`day` / `month` / `year`."
+          },
+          "value": {
+            "description": "Value formatted to the claimed precision (`YYYY-MM-DD` / `YYYY-MM` / `YYYY`).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "precision",
+          "value"
+        ],
+        "type": "object"
+      },
+      "Impact": {
+        "description": "Recall list: forward closure to CUSTOMER boundary postings (D2 case g).",
+        "properties": {
+          "customers": {
+            "description": "Customer / sales-order references on those documents.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "shipments": {
+            "description": "Inventory shipment documents that reached CUSTOMER.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "units": {
+            "description": "Serial units on those shipments.",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "customers",
+          "shipments",
+          "units"
+        ],
+        "title": "Impact",
+        "type": "object"
+      },
+      "ItemBody": {
+        "description": "Wire item (`docs/10` snake_case).",
+        "properties": {
+          "application_version": {
+            "description": "Application version.",
+            "type": "string"
+          },
+          "configuration_version": {
+            "description": "Configuration version.",
+            "type": "string"
+          },
+          "cost_method": {
+            "description": "Cost method.",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "Created at (RFC 3339 UTC).",
+            "type": "string"
+          },
+          "description": {
+            "description": "Description.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Id.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind.",
+            "type": "string"
+          },
+          "number": {
+            "description": "Number.",
+            "type": "string"
+          },
+          "residual_tolerance": {
+            "description": "Residual tolerance as a decimal string.",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Revision.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Status.",
+            "type": "string"
+          },
+          "stock_scale": {
+            "description": "Scale.",
+            "format": "int16",
+            "type": "integer"
+          },
+          "stock_uom": {
+            "description": "Stocking unit.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "version": {
+            "description": "Version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "application_version",
+          "configuration_version",
+          "cost_method",
+          "created_at",
+          "description",
+          "id",
+          "kind",
+          "number",
+          "residual_tolerance",
+          "revision",
+          "status",
+          "stock_scale",
+          "stock_uom",
+          "version"
+        ],
+        "title": "ItemBody",
+        "type": "object"
+      },
+      "ItemPatch": {
+        "description": "PATCH `/api/v1/items/{id}` body.",
+        "properties": {
+          "cost_method": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "residual_tolerance": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "standard": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "stock_scale": {
+            "default": null,
+            "format": "int16",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "stock_uom": {
+            "default": null,
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "type": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "title": "ItemPatch",
+        "type": "object"
+      },
+      "JobState": {
+        "description": "Job queue state.",
+        "oneOf": [
+          {
+            "description": "Waiting for a worker.",
+            "enum": [
+              "Queued"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Claimed and executing.",
+            "enum": [
+              "Running"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Finished successfully.",
+            "enum": [
+              "Succeeded"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Exhausted retries or fatal handler error.",
+            "enum": [
+              "Failed"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Cancelled before run.",
+            "enum": [
+              "Cancelled"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "JobStatus": {
+        "description": "Snapshot of a job row for readers.",
+        "properties": {
+          "attempts": {
+            "description": "Attempt count so far.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "description": "Job id.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind string.",
+            "type": "string"
+          },
+          "last_error": {
+            "description": "Last error when failed.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_attempts": {
+            "description": "Maximum attempts.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "payload": {
+            "description": "Payload."
+          },
+          "progress_note": {
+            "description": "Human-readable progress note.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress_pct": {
+            "description": "Progress percent 0–100.",
+            "format": "int16",
+            "type": "integer"
+          },
+          "result": {
+            "description": "Result JSON when succeeded."
+          },
+          "run_after": {
+            "description": "Scheduled run time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/JobState"
+              }
+            ],
+            "description": "Queue state."
+          }
+        },
+        "required": [
+          "attempts",
+          "id",
+          "kind",
+          "max_attempts",
+          "payload",
+          "progress_pct",
+          "run_after",
+          "state"
+        ],
+        "title": "JobStatus",
+        "type": "object"
+      },
+      "ListBody_for_ItemBody": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/ItemBody"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_ItemBody",
+        "type": "object"
+      },
+      "ListBody_for_PrincipalBody": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/PrincipalBody"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_PrincipalBody",
+        "type": "object"
+      },
+      "ListBody_for_RoleBody": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/RoleBody"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_RoleBody",
+        "type": "object"
+      },
+      "ListBody_for_SerialBody": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/SerialBody"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_SerialBody",
+        "type": "object"
+      },
+      "LoginBody": {
+        "description": "POST `/api/v1/identity/login` body.",
+        "properties": {
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "username"
+        ],
+        "title": "LoginBody",
+        "type": "object"
+      },
+      "LoginResponse": {
+        "description": "POST `/api/v1/identity/login` success body.",
+        "properties": {
+          "csrf": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "principal_id": {
+            "type": "string"
+          },
+          "session_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf",
+          "display_name",
+          "principal_id",
+          "session_id"
+        ],
+        "title": "LoginResponse",
+        "type": "object"
+      },
+      "LotBody": {
+        "description": "Lot JSON body (GET).",
+        "properties": {
+          "cert_ref": {
+            "description": "Certificate reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "description": "Server time of record.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpiryWire"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expiry as `{date, precision}`."
+          },
+          "heat": {
+            "description": "Heat / source reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Surrogate id.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "identifier": {
+            "description": "Kernel identifier.",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "Item id.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LotStatus"
+              }
+            ],
+            "description": "Status."
+          },
+          "supplier_lot": {
+            "description": "Supplier lot cross-reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "udi_device_identifier": {
+            "description": "UDI-DI attachment (nullable).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "Version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "created_at",
+          "id",
+          "identifier",
+          "item_id",
+          "status",
+          "version"
+        ],
+        "title": "LotBody",
+        "type": "object"
+      },
+      "LotStatus": {
+        "description": "Lot / serial status. Inventory posts the corresponding movement; this module records the status and its history only.",
+        "oneOf": [
+          {
+            "description": "Received, not yet released.",
+            "enum": [
+              "quarantine"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Released for use.",
+            "enum": [
+              "available"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Temporarily unavailable.",
+            "enum": [
+              "hold"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Rejected; not available.",
+            "enum": [
+              "rejected"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "MoneyBody": {
+        "description": "Wire money.",
+        "properties": {
+          "amount": {
+            "description": "Amount as a decimal string.",
+            "type": "string"
+          },
+          "currency": {
+            "description": "ISO 4217 numeric.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "MoneyWire": {
+        "properties": {
+          "amount": {
+            "type": "string"
+          },
+          "currency": {
+            "$ref": "#/components/schemas/CurrencyId"
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "title": "MoneyWire",
+        "type": "object"
+      },
+      "NavigationBody": {
+        "description": "GET `/api/v1/navigation` body.",
+        "properties": {
+          "hidden": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "visible": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "hidden",
+          "visible"
+        ],
+        "title": "NavigationBody",
+        "type": "object"
+      },
+      "OnHandBody": {
+        "description": "GET `/api/v1/inventory/on-hand` body. Amounts are decimal strings, not `AnyQuantity`.",
+        "properties": {
+          "available": {
+            "type": "string"
+          },
+          "on_hand": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "on_hand"
+        ],
+        "title": "OnHandBody",
+        "type": "object"
+      },
+      "PrincipalBody": {
+        "description": "GET `/api/v1/identity/me` (and principal read) body. Timestamps stay RFC 3339 strings at seconds precision, matching the previous `json!` emission.",
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "deactivated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "principal_kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "display_name",
+          "id",
+          "principal_kind",
+          "status",
+          "username"
+        ],
+        "title": "PrincipalBody",
+        "type": "object"
+      },
+      "ResolveIdBody": {
+        "description": "GET `/api/v1/items/resolve` and `/api/v1/work-orders/resolve` body.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "ResolveIdBody",
+        "type": "object"
+      },
+      "RoleBody": {
+        "description": "GET `/api/v1/identity/roles` (and role read) body.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "permissions"
+        ],
+        "title": "RoleBody",
+        "type": "object"
+      },
+      "SerialBody": {
+        "description": "Serial JSON body.",
+        "properties": {
+          "id": {
+            "description": "Surrogate id.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "identifier": {
+            "description": "Kernel identifier.",
+            "type": "string"
+          },
+          "lot_id": {
+            "description": "Owning lot.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LotStatus"
+              }
+            ],
+            "description": "Status."
+          },
+          "udi_production_identifier": {
+            "description": "UDI-PI attachment.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "description": "Version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "identifier",
+          "lot_id",
+          "status",
+          "version"
+        ],
+        "title": "SerialBody",
+        "type": "object"
+      },
+      "TraceBody": {
+        "description": "Body of a finished trace.",
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Tree"
+              }
+            ],
+            "description": "One direction."
+          },
+          {
+            "description": "Both directions.",
+            "properties": {
+              "backward": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Tree"
+                  }
+                ],
+                "description": "Backward forest."
+              },
+              "forward": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Tree"
+                  }
+                ],
+                "description": "Forward forest."
+              }
+            },
+            "required": [
+              "backward",
+              "forward"
+            ],
+            "type": "object"
+          }
+        ],
+        "title": "TraceBody"
+      },
+      "Tree": {
+        "description": "A forest returned by a single-direction trace.",
+        "properties": {
+          "direction": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Direction"
+              }
+            ],
+            "description": "Direction that produced this forest."
+          },
+          "nodes": {
+            "description": "Root nodes.",
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "direction",
+          "nodes"
+        ],
+        "type": "object"
+      },
+      "TreeNode": {
+        "description": "One node of the genealogy tree the mockup draws.",
+        "properties": {
+          "amount": {
+            "description": "Edge amount into this node (wire shape of [`wicket_core::Money`]). `serde(with = rust_decimal::serde::str)` so the wire is a string; a bare derive would not compile and a numeric schema would disagree with the wire.",
+            "type": "string"
+          },
+          "amount_currency": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CurrencyId"
+              }
+            ],
+            "description": "Currency of [`Self::amount`]."
+          },
+          "children": {
+            "description": "Recursed children.",
+            "items": {
+              "$ref": "#/components/schemas/TreeNode"
+            },
+            "type": "array"
+          },
+          "edge_quantity": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnyQuantity"
+              }
+            ],
+            "description": "Consumption-edge quantity into this node."
+          },
+          "item": {
+            "description": "Item on the lot, when the posting carries a lot.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "description": "Location, when known from a published inventory document.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lot": {
+            "description": "Kernel lot.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "occurred_at": {
+            "description": "Time of record, when known.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "posting": {
+            "description": "Ledger posting.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "quantity": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AnyQuantity"
+              }
+            ],
+            "description": "Stock quantity on the node (ledger `Node::quantity`)."
+          },
+          "serial": {
+            "description": "Kernel serial.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "amount_currency",
+          "children",
+          "edge_quantity",
+          "posting",
+          "quantity"
+        ],
+        "type": "object"
+      },
+      "UnitId": {
+        "description": "Opaque catalog identifier. Core never interprets the catalog.",
+        "format": "int64",
+        "type": "integer"
+      }
+    }
+  },
+  "info": {
+    "description": "Wave 2s slice. The UI consumes this document (ADR 0009).",
+    "title": "Wicket HTTP API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/audit": {
+      "get": {
+        "operationId": "exportAudit",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "audit.export"
+      }
+    },
+    "/api/v1/calibration/certificates/{id}/approve": {
+      "post": {
+        "operationId": "approveCalibration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "calibration.approve"
+      }
+    },
+    "/api/v1/customfields/definitions": {
+      "get": {
+        "operationId": "listCustomFieldDefinitions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "entity",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "customfields.view"
+      },
+      "post": {
+        "operationId": "defineCustomField",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "customfields.define"
+      }
+    },
+    "/api/v1/customfields/definitions/{id}/retire": {
+      "post": {
+        "operationId": "retireCustomField",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "customfields.retire"
+      }
+    },
+    "/api/v1/documents": {
+      "post": {
+        "operationId": "createDocument",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "documents.edit"
+      }
+    },
+    "/api/v1/documents/{id}": {
+      "get": {
+        "operationId": "getDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "documents.view"
+      }
+    },
+    "/api/v1/documents/{id}/approve": {
+      "post": {
+        "operationId": "approveDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "documents.approve"
+      }
+    },
+    "/api/v1/documents/{id}/revisions": {
+      "post": {
+        "operationId": "createDocumentRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "documents.edit"
+      }
+    },
+    "/api/v1/documents/{id}/submit": {
+      "post": {
+        "operationId": "submitDocument",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "documents.edit"
+      }
+    },
+    "/api/v1/esign/challenges": {
+      "post": {
+        "operationId": "esignChallenge",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/esign/signatures": {
+      "post": {
+        "operationId": "esignMint",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/esign/signatures/{id}": {
+      "get": {
+        "operationId": "getEsignSignature",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/esign/signatures/{id}/bundle": {
+      "get": {
+        "operationId": "getEsignBundle",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "esign.bundle.read"
+      }
+    },
+    "/api/v1/genealogy/impact/{lot}": {
+      "get": {
+        "operationId": "getImpact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "lot",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Impact"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "genealogy.view"
+      }
+    },
+    "/api/v1/genealogy/jobs/{id}": {
+      "get": {
+        "operationId": "getGenealogyJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "genealogy.view"
+      }
+    },
+    "/api/v1/genealogy/trace": {
+      "get": {
+        "operationId": "traceGenealogy",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from_lot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "required": false,
+            "schema": {
+              "default": "forward",
+              "enum": [
+                "forward",
+                "backward",
+                "both"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/TraceBody"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AcceptedBody"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "genealogy.view"
+      }
+    },
+    "/api/v1/identity/login": {
+      "post": {
+        "operationId": "login",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": ""
+      }
+    },
+    "/api/v1/identity/logout": {
+      "post": {
+        "operationId": "logout",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/identity/me": {
+      "get": {
+        "operationId": "getOwnProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/identity/me/login-credential": {
+      "post": {
+        "operationId": "changeOwnLoginCredential",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/identity/me/signing-credential": {
+      "post": {
+        "operationId": "setOwnSigningCredential",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/identity/principals": {
+      "get": {
+        "operationId": "listPrincipals",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_PrincipalBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      },
+      "post": {
+        "operationId": "createPrincipal",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/by-username": {
+      "get": {
+        "operationId": "getPrincipalByUsername",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "username",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/{id}": {
+      "get": {
+        "operationId": "getPrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/{id}/deactivate": {
+      "post": {
+        "operationId": "deactivatePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/{id}/login-credential": {
+      "post": {
+        "operationId": "resetLoginCredential",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/{id}/rename": {
+      "post": {
+        "operationId": "renamePrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/principals/{id}/roles": {
+      "get": {
+        "operationId": "listRolesForPrincipal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_RoleBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/roles": {
+      "get": {
+        "operationId": "listRoles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_RoleBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/identity/roles/by-name": {
+      "get": {
+        "operationId": "getRoleByName",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoleBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.manage"
+      }
+    },
+    "/api/v1/inventory/counts": {
+      "post": {
+        "operationId": "createCount",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "inventory.count"
+      }
+    },
+    "/api/v1/inventory/on-hand": {
+      "get": {
+        "operationId": "getOnHand",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "location_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "lot_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnHandBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "inventory.view"
+      }
+    },
+    "/api/v1/inventory/receipts": {
+      "post": {
+        "operationId": "createReceipt",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "inventory.receive"
+      }
+    },
+    "/api/v1/inventory/releases": {
+      "post": {
+        "operationId": "releaseFromQuarantine",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.release"
+      }
+    },
+    "/api/v1/inventory/reversals": {
+      "post": {
+        "operationId": "reverseIssue",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "inventory.adjust"
+      }
+    },
+    "/api/v1/iq/manifest": {
+      "get": {
+        "operationId": "getValidationManifest",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "validation.manifest.read"
+      }
+    },
+    "/api/v1/items": {
+      "get": {
+        "operationId": "listItems",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "number_prefix",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_ItemBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.view"
+      },
+      "post": {
+        "operationId": "createItem",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.edit"
+      }
+    },
+    "/api/v1/items/resolve": {
+      "get": {
+        "operationId": "resolveItemByNumber",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveIdBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.view"
+      }
+    },
+    "/api/v1/items/{id}": {
+      "get": {
+        "operationId": "getItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.view"
+      },
+      "patch": {
+        "operationId": "updateItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.edit"
+      }
+    },
+    "/api/v1/items/{id}/custom-fields": {
+      "get": {
+        "operationId": "getItemCustomFields",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "customfields.view"
+      },
+      "put": {
+        "operationId": "setItemCustomFields",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "customfields.set"
+      }
+    },
+    "/api/v1/items/{id}/release": {
+      "post": {
+        "operationId": "releaseItem",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "items.release"
+      }
+    },
+    "/api/v1/locations": {
+      "get": {
+        "operationId": "listLocations",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "locations.view"
+      },
+      "post": {
+        "operationId": "createLocation",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "locations.edit"
+      }
+    },
+    "/api/v1/locations/tree": {
+      "get": {
+        "operationId": "listLocationTree",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_inactive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "locations.view"
+      }
+    },
+    "/api/v1/locations/{id}": {
+      "get": {
+        "operationId": "getLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "locations.view"
+      }
+    },
+    "/api/v1/locations/{id}/deactivate": {
+      "post": {
+        "operationId": "deactivateLocation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "locations.edit"
+      }
+    },
+    "/api/v1/lots": {
+      "get": {
+        "operationId": "listLots",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.view"
+      },
+      "post": {
+        "operationId": "createLot",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.edit"
+      }
+    },
+    "/api/v1/lots/{id}": {
+      "get": {
+        "operationId": "getLot",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.view"
+      }
+    },
+    "/api/v1/lots/{id}/packages": {
+      "get": {
+        "operationId": "listPackages",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.view"
+      },
+      "post": {
+        "operationId": "createPackage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.edit"
+      }
+    },
+    "/api/v1/lots/{id}/serials": {
+      "get": {
+        "operationId": "listSerials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_SerialBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.view"
+      },
+      "post": {
+        "operationId": "createSerials",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.edit"
+      }
+    },
+    "/api/v1/lots/{id}/status": {
+      "post": {
+        "operationId": "setLotStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "lots.release"
+      }
+    },
+    "/api/v1/navigation": {
+      "get": {
+        "operationId": "getNavigation",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NavigationBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "identity.session"
+      }
+    },
+    "/api/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApi",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": ""
+      }
+    },
+    "/api/v1/print/archive": {
+      "post": {
+        "operationId": "archivePrint",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "print.archive"
+      }
+    },
+    "/api/v1/print/render": {
+      "post": {
+        "operationId": "renderPrint",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "print.render"
+      }
+    },
+    "/api/v1/print/templates": {
+      "get": {
+        "operationId": "listPrintTemplates",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "print.templates"
+      }
+    },
+    "/api/v1/work-orders": {
+      "get": {
+        "operationId": "listWorkOrders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.view"
+      },
+      "post": {
+        "operationId": "createWorkOrder",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.create"
+      }
+    },
+    "/api/v1/work-orders/resolve": {
+      "get": {
+        "operationId": "resolveWorkOrderByNumber",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveIdBody"
+                }
+              }
+            },
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.view"
+      }
+    },
+    "/api/v1/work-orders/{id}": {
+      "get": {
+        "operationId": "getWorkOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.view"
+      }
+    },
+    "/api/v1/work-orders/{id}/complete": {
+      "post": {
+        "operationId": "completeWorkOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.complete"
+      }
+    },
+    "/api/v1/work-orders/{id}/issue": {
+      "post": {
+        "operationId": "issueWorkOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.issue"
+      }
+    },
+    "/api/v1/work-orders/{id}/release": {
+      "post": {
+        "operationId": "releaseWorkOrder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": "production.release"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "ok"
+          },
+          "201": {
+            "description": "created"
+          },
+          "400": {
+            "description": "validation"
+          },
+          "401": {
+            "description": "unauthenticated"
+          },
+          "403": {
+            "description": "forbidden"
+          },
+          "404": {
+            "description": "not found"
+          },
+          "409": {
+            "description": "conflict"
+          }
+        },
+        "x-wicket-permission": ""
+      }
+    }
+  }
+}

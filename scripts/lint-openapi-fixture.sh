@@ -3,12 +3,8 @@
 # Offline; no Postgres. POSIX bash 3.2; portable awk.
 # Regeneration is `just openapi-fixture` (this script --write). Never a CI dependency.
 #
-# T-35 Wave 1 (ADR 0011): request/response *schemas* are not in this fixture.
-# They are derived from the Rust types the handlers serialize (`schemars`) and
-# attached in crates/wicket-server/src/openapi.rs by capability id. There is no
-# schema fixture to regenerate: change a type, serve /api/v1/openapi.json, and
-# the slice tests read what the binary emits. Verify with `just ci` and
-# `just ci-db`. `just openapi-fixture` still rewrites only the (method, path) set.
+# This script still diffs only (method, path) against openapi-operations.txt.
+# The full document is `just openapi-document`.
 set -eu
 
 ROOT="${REPO_ROOT:-$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)}"

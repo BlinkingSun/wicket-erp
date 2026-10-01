@@ -405,10 +405,8 @@ lint-module-manifests:
     bash "{{root}}/scripts/lint-module-manifests.sh"
 
 # T-44: capability table (method, path) set vs committed OpenAPI operation fixture.
-# T-35 Wave 1 schemas are not in this fixture: they are derived from handler
-# types (ADR 0011) and gated by slice.rs against the served document. Change a
-# type, serve /api/v1/openapi.json, run `just ci` and `just ci-db`. There is no
-# schema-fixture regenerate step.
+# This recipe still diffs only (method, path) against openapi-operations.txt.
+# The full document is `just openapi-document`.
 lint-openapi-fixture:
     bash "{{root}}/scripts/lint-openapi-fixture.sh"
 
@@ -418,8 +416,59 @@ lint-openapi-fixture:
 openapi-fixture:
     bash "{{root}}/scripts/lint-openapi-fixture.sh" --write
 
-# Offline CI: format, clippy, SQL fence, mount lint, module manifests, OpenAPI fixture, lib tests.
-ci: fmt-check clippy lint-sql lint-mounts lint-module-manifests lint-openapi-fixture test-lib
+# ADR 0011: both document fixtures exist, name OpenAPI 3.0.3, and their
+# operationId set equals the capability-table ids (count 72). Offline; no
+# Postgres, no Node. Does not compare document bodies.
+lint-openapi-document:
+    bash "{{root}}/scripts/lint-openapi-document.sh"
+
+# ADR 0011: rewrite both profile document fixtures from App::boot and
+# wicket_server::openapi_document (the function GET /api/v1/openapi.json serves).
+# Explicit act. Must not become a dependency of ci / ci-db. Requires
+# WICKET_MIGRATE_DATABASE_URL. Does not default a database name.
+# plain-shop and regulated-device define different `wo` numbering formats, so
+# each boot is given a fresh copy of the database named in WICKET_DATABASE_URL.
+openapi-document:
+    : "${WICKET_MIGRATE_DATABASE_URL:?openapi-document: WICKET_MIGRATE_DATABASE_URL is unset}"; \
+    app_url="${WICKET_DATABASE_URL:?openapi-document: WICKET_DATABASE_URL is unset}"; \
+    boot="${WICKET_BOOTSTRAP_URL:?openapi-document: WICKET_BOOTSTRAP_URL is unset}"; \
+    name="${app_url%%\?*}"; name="${name##*/}"; \
+    case "$name" in \
+      ''|*[!A-Za-z0-9_]*) echo "openapi-document: database name is not a simple identifier: ${name}" >&2; exit 1 ;; \
+    esac; \
+    if [ -n "${WICKET_TEST_DB:-}" ] && [ "$WICKET_TEST_DB" != "$name" ]; then \
+      echo "openapi-document: WICKET_TEST_DB (${WICKET_TEST_DB}) is not the database in WICKET_DATABASE_URL (${name})" >&2; \
+      exit 1; \
+    fi; \
+    export WICKET_TEST_DB="$name"; \
+    if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix postgresql@17)/bin/psql" ]; then \
+      psql="$(brew --prefix postgresql@17)/bin/psql"; \
+    else \
+      psql="$(command -v psql)"; \
+    fi; \
+    fresh() { \
+      "$psql" "$boot" -v ON_ERROR_STOP=1 -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${name}' AND pid <> pg_backend_pid();"; \
+      "$psql" "$boot" -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS \"${name}\";"; \
+      just db-reset; \
+    }; \
+    fresh; \
+    cargo run --manifest-path "{{root}}/Cargo.toml" -p wicket-server --example openapi_document -- --profile plain-shop --out "{{root}}/crates/wicket-server/tests/fixtures/openapi-document.json"; \
+    fresh; \
+    cargo run --manifest-path "{{root}}/Cargo.toml" -p wicket-server --example openapi_document -- --profile regulated-device --out "{{root}}/crates/wicket-server/tests/fixtures/openapi-document-regulated.json"
+
+# ADR 0009: plain-shop document fixture vs committed TypeScript client.
+# Offline; requires Node. Not part of `ci`.
+lint-openapi-client:
+    bash "{{root}}/scripts/lint-openapi-client.sh"
+
+# ADR 0009: rewrite the committed TypeScript client from the plain-shop fixture.
+# Explicit act. Must not become a dependency of ci / ci-db.
+openapi-client:
+    bash "{{root}}/scripts/lint-openapi-client.sh" --write
+
+# Offline CI: format, clippy, SQL fence, mount lint, module manifests, OpenAPI
+# operation fixture, OpenAPI document operation ids, lib tests. No Node, no Postgres.
+ci: fmt-check clippy lint-sql lint-mounts lint-module-manifests lint-openapi-fixture lint-openapi-document test-lib
 
 # CI plus database tests (`ci` then `test-db`). This recipe, not `ci`, runs the
 # integration tests under crates/*/tests/, including Wave 2s slice acceptance,
@@ -434,6 +483,7 @@ ui-install:
 ui-lint:
     npm run lint --prefix "{{root}}/apps/wicket-web"
     npm run typecheck --prefix "{{root}}/apps/wicket-web"
+    just lint-openapi-client
 
 ui-build:
     npm run build --prefix "{{root}}/apps/wicket-web"
