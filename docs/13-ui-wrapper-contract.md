@@ -60,7 +60,7 @@ Operation id `getOpenApi`. Unauthenticated (`permission` is `""` in `capabilitie
 | `paths.{path}.{method}.parameters` | path placeholders, the query list in §4.3, and required headers `Idempotency-Key` / `If-Match` / `X-Wicket-Signature` where the per-id lists in `openapi.rs` say so |
 | `paths.{path}.{method}.requestBody` | an `application/json` schema on 28 operations; absent on the rest |
 | `paths.{path}.{method}.responses` | 72 of 72 operations are typed per the seam-v2 rule (below). `health` is 200 `text/plain` with a string schema; `logout` is 204 with no `content` and no `200`. Other operations use 200 `application/json` where applicable. Other statuses are bare descriptions |
-| `components.schemas` | 114 schemas, including `ErrorEnvelope` |
+| `components.schemas` | 113 schemas, including `ErrorEnvelope` |
 
 72 of 72 operations are typed on both `plain-shop` and `regulated-device`. An operation counts as typed when it has a 200 `application/json` schema object and an `application/json` `requestBody` iff the handler parses JSON; `health` counts when 200 carries `text/plain` `{"type":"string"}` and no `application/json`; `logout` counts when 204 has a description and no `content`, `requestBody` is absent, and `responses["200"]` is absent. `served_openapi_carries_wave1_body_schemas` enforces the set equals all 72 operation ids with an empty remainder on each profile. The counts are the committed fixtures `crates/wicket-server/tests/fixtures/openapi-document.json` and `openapi-document-regulated.json` (the served document matches those fixtures, `crates/wicket-server/tests/openapi_document.rs:30-43`). The generated client is `apps/wicket-web/src/api/generated/openapi.ts`.
 
@@ -317,9 +317,9 @@ Codes actually constructed in `crates/wicket-server/src/error.rs` and helpers:
 
 ### 4.5 Success statuses the handlers actually set
 
-Handlers pick 200, 201, or 204 explicitly (`json_status`, `StatusCode::NO_CONTENT`). OpenAPI lists 200 and 201 on every operation regardless. Logout, principal rename/deactivate/credential writes return 204 and an empty body.
+Handlers pick 200, 201, or 204 explicitly (`json_status`, `StatusCode::NO_CONTENT`). OpenAPI lists `201` on all 72 operations and `200` on every operation except `logout` (which has no `200`; see §2.2). Logout, principal rename/deactivate/credential writes return 204 and an empty body.
 
-`GET /health` returns the crate version as **plain text**, not JSON (`handlers/mod.rs` `health`).
+`GET /health` returns the crate version as **plain text**, not JSON (`handlers/kernel.rs` `health`).
 
 ---
 
