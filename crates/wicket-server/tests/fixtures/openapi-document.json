@@ -20,6 +20,26 @@
         "title": "AcceptedBody",
         "type": "object"
       },
+      "AnchorRef": {
+        "description": "Off-box anchor, if any.",
+        "properties": {
+          "receipt": {
+            "description": "Receipt.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sink": {
+            "description": "Sink name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sink"
+        ],
+        "type": "object"
+      },
       "AnyQuantity": {
         "properties": {
           "amount": {
@@ -39,10 +59,670 @@
         ],
         "type": "object"
       },
+      "ArchivalBundle": {
+        "description": "Archival bundle (D-2b-8).",
+        "properties": {
+          "anchor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnchorRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Anchor, if recorded."
+          },
+          "audit_event_ids": {
+            "description": "Audit event ids covering this signature (row-change + `esign_id` link).",
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "manifestation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Manifestation"
+              }
+            ],
+            "description": "Manifestation."
+          },
+          "record_content_hash": {
+            "description": "SHA-256 of that snapshot. On the wire this is a JSON array of 32 integers, not the hex string on [`SignatureManifest::record_content_hash`].",
+            "items": {
+              "format": "uint8",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 32,
+            "minItems": 32,
+            "type": "array"
+          },
+          "record_snapshot": {
+            "description": "Canonical snapshot that was hashed. Any JSON value."
+          },
+          "seals": {
+            "description": "Seals covering those events (`prev_hash` chain from `audit.tx_seal`).",
+            "items": {
+              "$ref": "#/components/schemas/SealRef"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "audit_event_ids",
+          "manifestation",
+          "record_content_hash",
+          "record_snapshot",
+          "seals"
+        ],
+        "title": "ArchivalBundle",
+        "type": "object"
+      },
+      "ArchiveBody": {
+        "description": "POST `/api/v1/print/archive` body.",
+        "properties": {
+          "output_hash": {
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordBody"
+          }
+        },
+        "required": [
+          "output_hash",
+          "record"
+        ],
+        "title": "ArchiveBody",
+        "type": "object"
+      },
+      "ArchivePrintResponse": {
+        "description": "POST `/api/v1/print/archive` success body.",
+        "properties": {
+          "blob_hash": {
+            "description": "Lowercase hex SHA-256 of the archived blob.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blob_hash"
+        ],
+        "title": "ArchivePrintResponse",
+        "type": "object"
+      },
+      "AuditExportBody": {
+        "description": "GET `/api/v1/audit` body.\n\nNot [`wicket_audit::Head`]: the wire omits `hash` and `sealed_at`. Inner keys match the `json!` blob (alphabetical). `head` is always present (`null` when the chain has no seal). A derived `Option` omits the key from `required`; [`audit_head_schema`] keeps the key required and the value nullable.",
+        "properties": {
+          "head": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditHeadBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "head"
+        ],
+        "title": "AuditExportBody",
+        "type": "object"
+      },
+      "AuditHeadBody": {
+        "description": "Nested `head` object on [`AuditExportBody`].",
+        "properties": {
+          "chain_algo": {
+            "type": "string"
+          },
+          "row_count": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "seq": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "xid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chain_algo",
+          "row_count",
+          "seq",
+          "xid"
+        ],
+        "type": "object"
+      },
+      "CalibrationApprovedBody": {
+        "description": "POST `/api/v1/calibration/certificates/{id}/approve` success body.\n\nThe engine emits `{ id, status: \"approved\" }`. `status` is that literal, not an open string of future states.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Always the string `\"approved\"`.",
+            "enum": [
+              "approved"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "CalibrationApprovedBody",
+        "type": "object"
+      },
+      "Challenge": {
+        "description": "Wire shape for `POST /esign/challenges`.",
+        "properties": {
+          "components_required": {
+            "description": "Components the client must present.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "credential_kind": {
+            "description": "Credential kind (`signing_password` / `idp_step_up`).",
+            "type": "string"
+          },
+          "signing_session_expires_at": {
+            "description": "When the current signing session expires, if any.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "components_required",
+          "credential_kind"
+        ],
+        "title": "Challenge",
+        "type": "object"
+      },
+      "CompleteBody": {
+        "properties": {
+          "finished_lot_number": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "scrap": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnyQuantity"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "serial_from": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serial_template": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "location_id",
+          "quantity"
+        ],
+        "title": "CompleteBody",
+        "type": "object"
+      },
+      "ControlledDocumentBody": {
+        "description": "Document response for create, get, submit, and approve. `version` is the state-machine instance version.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "legal_hold": {
+            "type": "boolean"
+          },
+          "number": {
+            "type": "string"
+          },
+          "retention_class": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "legal_hold",
+          "number",
+          "retention_class",
+          "status",
+          "title",
+          "version"
+        ],
+        "title": "ControlledDocumentBody",
+        "type": "object"
+      },
+      "CountBody": {
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/CountLineBody"
+            },
+            "type": "array"
+          },
+          "location_id": {
+            "type": "string"
+          },
+          "reference": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tolerance": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lines",
+          "location_id"
+        ],
+        "title": "CountBody",
+        "type": "object"
+      },
+      "CountLineBody": {
+        "properties": {
+          "counted": {
+            "$ref": "#/components/schemas/QuantityBody"
+          },
+          "expected": {
+            "$ref": "#/components/schemas/QuantityBody"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "lot_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "counted",
+          "expected",
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "CreateLotBody": {
+        "description": "POST `/api/v1/lots` body.",
+        "properties": {
+          "cert_ref": {
+            "description": "Certificate reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expiry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpiryWire"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Expiry `{value, precision}`."
+          },
+          "heat": {
+            "description": "Heat / source reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "identifier": {
+            "description": "Optional supplied kernel identifier.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_id": {
+            "description": "Item this lot belongs to.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LotStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Initial status."
+          },
+          "supplier_lot": {
+            "description": "Supplier lot cross-reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "template": {
+            "description": "Generator template when `identifier` is absent.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "item_id"
+        ],
+        "title": "CreateLotBody",
+        "type": "object"
+      },
+      "CreatePrincipalBody": {
+        "additionalProperties": false,
+        "description": "POST `/api/v1/identity/principals` body.",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "principal_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "User",
+                  "Service",
+                  "Migration"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "password",
+          "username"
+        ],
+        "title": "CreatePrincipalBody",
+        "type": "object"
+      },
+      "CreateSerialsBody": {
+        "description": "POST `/api/v1/lots/{id}/serials` body.",
+        "properties": {
+          "count": {
+            "description": "How many serials to allocate.",
+            "format": "uint32",
+            "minimum": 0.0,
+            "type": "integer"
+          },
+          "template": {
+            "description": "Generator template.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "CreateSerialsBody",
+        "type": "object"
+      },
       "CurrencyId": {
         "description": "ISO 4217 numeric currency code; the catalog row lives in the database.",
         "format": "int32",
         "type": "integer"
+      },
+      "DefineBody": {
+        "description": "POST `/api/v1/customfields/definitions` body.\n\n`type` is [`FieldType::as_str`] (`\"string\"`). `id`, when present, is rejected.",
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "indexed": {
+            "default": false,
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "owner_module": {
+            "type": "string"
+          },
+          "required": {
+            "default": false,
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "text",
+              "integer",
+              "decimal",
+              "bool",
+              "date",
+              "enum",
+              "reference"
+            ],
+            "type": "string"
+          },
+          "validation_rule": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "key",
+          "label",
+          "owner_module",
+          "type"
+        ],
+        "title": "DefineBody",
+        "type": "object"
+      },
+      "DefineResponse": {
+        "description": "POST `/api/v1/customfields/definitions` 201 body. Subset of [`Definition`].",
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity",
+          "id",
+          "key"
+        ],
+        "title": "DefineResponse",
+        "type": "object"
+      },
+      "Definition": {
+        "description": "Effectivity-versioned field definition.",
+        "properties": {
+          "entity": {
+            "description": "Entity name (`items.item`, …).",
+            "type": "string"
+          },
+          "field_type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FieldType"
+              }
+            ],
+            "description": "Stored type."
+          },
+          "id": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DefinitionId"
+              }
+            ],
+            "description": "Stable id."
+          },
+          "indexed": {
+            "description": "Indexed hint (per-type btree exists on PK).",
+            "type": "boolean"
+          },
+          "key": {
+            "description": "Field key within the entity.",
+            "type": "string"
+          },
+          "label": {
+            "description": "Human label.",
+            "type": "string"
+          },
+          "owner_module": {
+            "description": "Owning module id (`mod-udi`, …).",
+            "type": "string"
+          },
+          "required": {
+            "description": "Required on the record.",
+            "type": "boolean"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DefinitionStatus"
+              }
+            ],
+            "description": "Active or retired."
+          },
+          "validation_rule": {
+            "description": "Validation rule string (`gs1-gtin`, `regex:…`, …).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version (increments on configuration change).",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entity",
+          "field_type",
+          "id",
+          "indexed",
+          "key",
+          "label",
+          "owner_module",
+          "required",
+          "status",
+          "validation_rule",
+          "version"
+        ],
+        "title": "Definition",
+        "type": "object"
+      },
+      "DefinitionId": {
+        "description": "Stable definition identity (all versions share this id).\n\nSerde is the inner uuid string (newtype). The derived schema is that string with `format: uuid`.",
+        "format": "uuid",
+        "type": "string"
+      },
+      "DefinitionStatus": {
+        "description": "Definition lifecycle.\n\nSerde emits the variant name (`\"Active\"` / `\"Retired\"`), not [`Self::as_str`]. The retire HTTP blob sends the `as_str` token `\"retired\"`.",
+        "oneOf": [
+          {
+            "description": "Active definitions accept writes.",
+            "enum": [
+              "Active"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Retired definitions are read-only.",
+            "enum": [
+              "Retired"
+            ],
+            "type": "string"
+          }
+        ]
       },
       "DimensionKind": {
         "description": "The sealed kernel dimension set. Adding a variant is a kernel change and a migration, never a customization. Modules cannot extend it.",
@@ -117,6 +797,113 @@
           }
         ]
       },
+      "DocumentBody": {
+        "description": "Wire document.",
+        "properties": {
+          "id": {
+            "description": "Id.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind.",
+            "type": "string"
+          },
+          "lines": {
+            "description": "Lines.",
+            "items": {
+              "$ref": "#/components/schemas/LineBody"
+            },
+            "type": "array"
+          },
+          "posted_group_id": {
+            "description": "Ledger group produced by posting.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reference": {
+            "description": "PO / WO / order reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "Status.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "lines",
+          "status",
+          "version"
+        ],
+        "title": "DocumentBody",
+        "type": "object"
+      },
+      "DocumentCreate": {
+        "description": "POST `/api/v1/documents` body. `id` is rejected with 400 if present.",
+        "properties": {
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "retention_class": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "retention_class",
+          "title"
+        ],
+        "title": "DocumentCreate",
+        "type": "object"
+      },
+      "DocumentRevisionBody": {
+        "description": "Wire shape for POST `/api/v1/documents/{id}/revisions` 201 response.",
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "id",
+          "label"
+        ],
+        "title": "DocumentRevisionBody",
+        "type": "object"
+      },
+      "EmptyBody": {
+        "additionalProperties": false,
+        "description": "Empty JSON object accepted on deactivate (empty bytes also accepted).",
+        "title": "EmptyBody",
+        "type": "object"
+      },
       "ErrorEnvelope": {
         "properties": {
           "error": {
@@ -148,6 +935,80 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "EsignIdentBody": {
+        "properties": {
+          "code": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "secret": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "EsignMintBody": {
+        "description": "POST `/api/v1/esign/signatures` request body.",
+        "properties": {
+          "doc_type": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "identification": {
+            "$ref": "#/components/schemas/EsignIdentBody"
+          },
+          "meaning": {
+            "type": "string"
+          },
+          "reason": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "record": {
+            "$ref": "#/components/schemas/EsignRecordBody"
+          }
+        },
+        "required": [
+          "identification",
+          "meaning",
+          "record"
+        ],
+        "title": "EsignMintBody",
+        "type": "object"
+      },
+      "EsignRecordBody": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "table",
+          "version"
         ],
         "type": "object"
       },
@@ -199,6 +1060,107 @@
         ],
         "type": "object"
       },
+      "FieldType": {
+        "description": "Stored field type (no JSON blob).\n\nSerde emits the variant name (`\"String\"`), not [`Self::as_str`] (`\"string\"`). List-definition JSON uses this enum; request bodies and [`ValueWire::type_name`] use the `as_str` token.",
+        "oneOf": [
+          {
+            "description": "Short string.",
+            "enum": [
+              "String"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Long text.",
+            "enum": [
+              "Text"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Integer.",
+            "enum": [
+              "Integer"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Decimal with scale.",
+            "enum": [
+              "Decimal"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Boolean.",
+            "enum": [
+              "Bool"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Calendar date with precision (inv 12).",
+            "enum": [
+              "Date"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Enumerated string.",
+            "enum": [
+              "Enum"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Reference to another entity record.",
+            "enum": [
+              "Reference"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "FieldWrite": {
+        "description": "One field in [`SetBody`]. `type` is [`FieldType::as_str`].",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "string",
+              "text",
+              "integer",
+              "decimal",
+              "bool",
+              "date",
+              "enum",
+              "reference"
+            ],
+            "type": "string"
+          },
+          "value": true
+        },
+        "required": [
+          "key",
+          "type",
+          "value"
+        ],
+        "type": "object"
+      },
+      "FinishedLotRef": {
+        "description": "Nested `finished_lot` object on the complete response blob.",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
       "Impact": {
         "description": "Recall list: forward closure to CUSTOMER boundary postings (D2 case g).",
         "properties": {
@@ -232,6 +1194,25 @@
           "units"
         ],
         "title": "Impact",
+        "type": "object"
+      },
+      "IssueBody": {
+        "properties": {
+          "from_location_id": {
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderIssueLine"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "from_location_id",
+          "lines"
+        ],
+        "title": "IssueBody",
         "type": "object"
       },
       "ItemBody": {
@@ -314,6 +1295,82 @@
           "version"
         ],
         "title": "ItemBody",
+        "type": "object"
+      },
+      "ItemCreate": {
+        "properties": {
+          "cost_method": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "number": {
+            "type": "string"
+          },
+          "residual_tolerance": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "standard": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "stock_scale": {
+            "default": 0,
+            "format": "int16",
+            "type": "integer"
+          },
+          "stock_uom": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "type": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "description",
+          "number",
+          "revision",
+          "stock_uom"
+        ],
+        "title": "ItemCreate",
         "type": "object"
       },
       "ItemPatch": {
@@ -506,6 +1563,118 @@
         "title": "JobStatus",
         "type": "object"
       },
+      "LineBody": {
+        "description": "Wire document line. Lots and serials are entity ids, never text.",
+        "properties": {
+          "canonical": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              }
+            ],
+            "description": "Canonical stock quantity."
+          },
+          "conversion_factor": {
+            "description": "Conversion factor.",
+            "type": "string"
+          },
+          "entered": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              }
+            ],
+            "description": "Entered quantity."
+          },
+          "from_location_id": {
+            "description": "Source location.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Id.",
+            "type": "string"
+          },
+          "item_id": {
+            "description": "Item.",
+            "type": "string"
+          },
+          "lot_id": {
+            "description": "Lot entity.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "package_id": {
+            "description": "Package entity.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason_code": {
+            "description": "Reason code.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "serial_id": {
+            "description": "Serial entity.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "to_location_id": {
+            "description": "Destination location.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "canonical",
+          "conversion_factor",
+          "entered",
+          "id",
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "ListBody_for_Definition": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/Definition"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_Definition",
+        "type": "object"
+      },
       "ListBody_for_ItemBody": {
         "description": "List envelope (docs/10 §2.3).",
         "properties": {
@@ -533,6 +1702,64 @@
           "has_more"
         ],
         "title": "ListBody_for_ItemBody",
+        "type": "object"
+      },
+      "ListBody_for_LotBody": {
+        "description": "List envelope.",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/LotBody"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_LotBody",
+        "type": "object"
+      },
+      "ListBody_for_PackageListItem": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/PackageListItem"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_PackageListItem",
         "type": "object"
       },
       "ListBody_for_PrincipalBody": {
@@ -622,6 +1849,375 @@
         "title": "ListBody_for_SerialBody",
         "type": "object"
       },
+      "ListBody_for_TemplateSummary": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/TemplateSummary"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_TemplateSummary",
+        "type": "object"
+      },
+      "ListBody_for_ValueWire": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/ValueWire"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_ValueWire",
+        "type": "object"
+      },
+      "ListBody_for_WorkOrderJson": {
+        "description": "List envelope (docs/10 §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page.",
+            "items": {
+              "$ref": "#/components/schemas/WorkOrderJson"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListBody_for_WorkOrderJson",
+        "type": "object"
+      },
+      "ListResponse_for_Location": {
+        "description": "List envelope (`docs/10` §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page of rows.",
+            "items": {
+              "$ref": "#/components/schemas/Location"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor (`id` of the last row on this page).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListResponse_for_Location",
+        "type": "object"
+      },
+      "ListResponse_for_LocationTreeNode": {
+        "description": "List envelope (`docs/10` §2.3).",
+        "properties": {
+          "data": {
+            "description": "Page of rows.",
+            "items": {
+              "$ref": "#/components/schemas/LocationTreeNode"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "description": "Whether another page exists.",
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "description": "Opaque next cursor (`id` of the last row on this page).",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "has_more"
+        ],
+        "title": "ListResponse_for_LocationTreeNode",
+        "type": "object"
+      },
+      "LocCreate": {
+        "description": "POST `/api/v1/locations` body.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "kind": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ],
+        "title": "LocCreate",
+        "type": "object"
+      },
+      "Location": {
+        "description": "Location master row.",
+        "properties": {
+          "boundary_class": {
+            "description": "Virtual boundary class when `kind == Virtual`. Serde is PascalCase variant name or null; `Boundary` has no `JsonSchema`.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "code": {
+            "description": "Unique uppercase code.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Primary key.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationKind"
+              }
+            ],
+            "description": "Structural kind."
+          },
+          "name": {
+            "description": "Display name.",
+            "type": "string"
+          },
+          "parent_id": {
+            "description": "Parent in the tree (`None` for roots).",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "site_id": {
+            "description": "Owning site.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LocationStatus"
+              }
+            ],
+            "description": "Active flag."
+          },
+          "version": {
+            "description": "Optimistic version.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "work_order_id": {
+            "description": "Work order for WIP rows.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "kind",
+          "name",
+          "site_id",
+          "status",
+          "version"
+        ],
+        "title": "Location",
+        "type": "object"
+      },
+      "LocationKind": {
+        "description": "Structural kind of a location node.",
+        "oneOf": [
+          {
+            "description": "Top-level warehouse.",
+            "enum": [
+              "warehouse"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Area within a warehouse.",
+            "enum": [
+              "area"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Storage bin.",
+            "enum": [
+              "bin"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Work-order WIP place (real, valued).",
+            "enum": [
+              "wip"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Outside-processing vendor place (real, valued).",
+            "enum": [
+              "osp"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Ledger virtual boundary location.",
+            "enum": [
+              "virtual"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "LocationStatus": {
+        "description": "Lifecycle status of a location row.",
+        "oneOf": [
+          {
+            "description": "Usable for postings.",
+            "enum": [
+              "active"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Hidden from pick lists; cannot receive new stock.",
+            "enum": [
+              "inactive"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "LocationSummary": {
+        "description": "Wire body for `createLocation` and `getLocation`.\n\nFive fields only. `listLocations` and `deactivateLocation` serialize the full [`Location`] row instead.",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/LocationKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "id",
+          "kind",
+          "name",
+          "version"
+        ],
+        "title": "LocationSummary",
+        "type": "object"
+      },
+      "LocationTreeNode": {
+        "description": "Tree node for hierarchical responses.",
+        "properties": {
+          "children": {
+            "description": "Children in sort order by code.",
+            "items": {
+              "$ref": "#/components/schemas/LocationTreeNode"
+            },
+            "type": "array"
+          },
+          "location": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              }
+            ],
+            "description": "This node."
+          }
+        },
+        "required": [
+          "children",
+          "location"
+        ],
+        "type": "object"
+      },
       "LoginBody": {
         "description": "POST `/api/v1/identity/login` body.",
         "properties": {
@@ -688,7 +2284,7 @@
                 "type": "null"
               }
             ],
-            "description": "Expiry as `{date, precision}`."
+            "description": "Expiry as `{value, precision}`."
           },
           "heat": {
             "description": "Heat / source reference.",
@@ -783,6 +2379,77 @@
           }
         ]
       },
+      "ManifestModuleBody": {
+        "description": "Wire shape of one interpolated `ManifestModule` (keys sorted by `json!`).",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "regulated": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "id",
+          "regulated",
+          "version"
+        ],
+        "type": "object"
+      },
+      "ManifestRecord": {
+        "description": "Record object inside the manifestation.",
+        "properties": {
+          "doc_type": {
+            "description": "Display document type.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Record id.",
+            "type": "string"
+          },
+          "table": {
+            "description": "Table name.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Record version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "doc_type",
+          "id",
+          "table",
+          "version"
+        ],
+        "type": "object"
+      },
+      "Manifestation": {
+        "description": "Exact wire shape: `{ \"signature\": { … } }`.",
+        "properties": {
+          "signature": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SignatureManifest"
+              }
+            ],
+            "description": "Signature manifestation."
+          }
+        },
+        "required": [
+          "signature"
+        ],
+        "title": "Manifestation",
+        "type": "object"
+      },
       "MoneyBody": {
         "description": "Wire money.",
         "properties": {
@@ -841,6 +2508,11 @@
         "title": "NavigationBody",
         "type": "object"
       },
+      "NoContentJson": {
+        "description": "Idempotency replay shape and OpenAPI stand-in for HTTP 204 success (no response body).",
+        "title": "NoContentJson",
+        "type": "object"
+      },
       "OnHandBody": {
         "description": "GET `/api/v1/inventory/on-hand` body. Amounts are decimal strings, not `AnyQuantity`.",
         "properties": {
@@ -856,6 +2528,114 @@
           "on_hand"
         ],
         "title": "OnHandBody",
+        "type": "object"
+      },
+      "OpenApiDocument": {
+        "description": "GET `/api/v1/openapi.json` — the OpenAPI 3.0.3 document (self-describing JSON object).\n\nSchema-only: the handler still returns `Json<Value>` of [`crate::openapi::document`].",
+        "title": "OpenApiDocument",
+        "type": "object"
+      },
+      "PackageCreate": {
+        "description": "POST `/api/v1/lots/{id}/packages` body. `contained` is the AnyQuantity wire (`docs/10` §3.1); the handler stores it as [`QuantityBody`] so amount stays a decimal string. `label_ref` is accepted and stored, not echoed.",
+        "properties": {
+          "contained": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "label_ref": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "level": {
+            "type": "string"
+          },
+          "parent_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "contained",
+          "level"
+        ],
+        "title": "PackageCreate",
+        "type": "object"
+      },
+      "PackageCreatedBody": {
+        "description": "POST `/api/v1/lots/{id}/packages` 201 body. Frozen from the handler `json!` blob: field is `contained`, not `PackageBody.contained_quantity`; `label_ref` is omitted even when the request supplied one.",
+        "properties": {
+          "contained": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "lot_id": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "contained",
+          "id",
+          "level",
+          "lot_id"
+        ],
+        "title": "PackageCreatedBody",
+        "type": "object"
+      },
+      "PackageListItem": {
+        "description": "GET `/api/v1/lots/{id}/packages` item. Frozen from the handler `json!` blob: omits `lot_id` and `label_ref`.",
+        "properties": {
+          "contained": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string"
+          },
+          "parent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "contained",
+          "id",
+          "level"
+        ],
+        "title": "PackageListItem",
+        "type": "object"
+      },
+      "PasswordBody": {
+        "additionalProperties": false,
+        "description": "Login-credential mutation bodies (`password` field).",
+        "properties": {
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "PasswordBody",
         "type": "object"
       },
       "PrincipalBody": {
@@ -897,6 +2677,401 @@
         "title": "PrincipalBody",
         "type": "object"
       },
+      "QuantityBody": {
+        "description": "Wire quantity (`docs/10`: amount is a decimal string).",
+        "properties": {
+          "amount": {
+            "description": "Amount as a decimal string.",
+            "type": "string"
+          },
+          "dimension": {
+            "description": "Dimension kind.",
+            "type": "string"
+          },
+          "unit": {
+            "description": "Catalog unit id.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount",
+          "dimension",
+          "unit"
+        ],
+        "type": "object"
+      },
+      "ReceiptBody": {
+        "properties": {
+          "actor_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entered": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "item_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptLine"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "location_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lot_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "purchase_order": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "title": "ReceiptBody",
+        "type": "object"
+      },
+      "ReceiptLine": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "entered": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "lot_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "package_id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantityBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "RecordBody": {
+        "description": "Record locator shared by print render and archive request bodies.",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "table",
+          "version"
+        ],
+        "title": "RecordBody",
+        "type": "object"
+      },
+      "ReleaseInvBody": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "entered": {
+            "$ref": "#/components/schemas/QuantityBody"
+          },
+          "from_location_id": {
+            "type": "string"
+          },
+          "lot_id": {
+            "type": "string"
+          },
+          "to_location_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entered",
+          "from_location_id",
+          "lot_id",
+          "to_location_id"
+        ],
+        "title": "ReleaseInvBody",
+        "type": "object"
+      },
+      "RenameBody": {
+        "additionalProperties": false,
+        "description": "POST `/api/v1/identity/principals/{id}/rename` body.",
+        "properties": {
+          "display_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name"
+        ],
+        "title": "RenameBody",
+        "type": "object"
+      },
+      "RenderBody": {
+        "description": "POST `/api/v1/print/render` body.",
+        "properties": {
+          "format": {
+            "type": "string"
+          },
+          "record": {
+            "$ref": "#/components/schemas/RecordBody"
+          },
+          "template_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "format",
+          "record",
+          "template_id"
+        ],
+        "title": "RenderBody",
+        "type": "object"
+      },
+      "RenderPrintResponse": {
+        "description": "POST `/api/v1/print/render` success body.\n\nThis is the archival blob the handler emits today, not [`wicket_print::Rendered`]. `output_hash` and `blob` hashes elsewhere are lowercase hex. `bytes_base64` is the rendition bytes. `manifestation` is [`Manifestation`] as `wicket-esign` serializes it. That type lives in a sibling crate, so its schema is hand-specified here rather than derived on a copy.",
+        "properties": {
+          "bytes_base64": {
+            "description": "Base64 of the rendition bytes.",
+            "type": "string"
+          },
+          "manifestation": {
+            "description": "Esign snapshots for the record. Empty when none exist.",
+            "items": {
+              "properties": {
+                "signature": {
+                  "properties": {
+                    "components_used": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "credential_kind": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "meaning": {
+                      "type": "string"
+                    },
+                    "printed_name": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "record": {
+                      "properties": {
+                        "doc_type": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "table": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "format": "int64",
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "doc_type",
+                        "id",
+                        "table",
+                        "version"
+                      ],
+                      "type": "object"
+                    },
+                    "record_content_hash": {
+                      "type": "string"
+                    },
+                    "signed_at": {
+                      "type": "string"
+                    },
+                    "signed_at_local": {
+                      "type": "string"
+                    },
+                    "signed_at_zone": {
+                      "type": "string"
+                    },
+                    "signer_id": {
+                      "type": "string"
+                    },
+                    "superseded": {
+                      "type": "boolean"
+                    },
+                    "superseded_by_version": {
+                      "default": null,
+                      "format": "int64",
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "components_used",
+                    "credential_kind",
+                    "id",
+                    "meaning",
+                    "printed_name",
+                    "reason",
+                    "record",
+                    "record_content_hash",
+                    "signed_at",
+                    "signed_at_local",
+                    "signed_at_zone",
+                    "signer_id",
+                    "superseded",
+                    "superseded_by_version"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "signature"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "output_hash": {
+            "description": "Lowercase hex SHA-256 of the rendition bytes.",
+            "type": "string"
+          },
+          "renderer_version": {
+            "description": "Crate version that produced the bytes.",
+            "type": "string"
+          },
+          "template_version": {
+            "description": "Template row version used.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes_base64",
+          "manifestation",
+          "output_hash",
+          "renderer_version",
+          "template_version"
+        ],
+        "title": "RenderPrintResponse",
+        "type": "object"
+      },
       "ResolveIdBody": {
         "description": "GET `/api/v1/items/resolve` and `/api/v1/work-orders/resolve` body.",
         "properties": {
@@ -908,6 +3083,126 @@
           "id"
         ],
         "title": "ResolveIdBody",
+        "type": "object"
+      },
+      "RetireResponse": {
+        "description": "POST `/api/v1/customfields/definitions/{id}/retire` body.\n\n`status` is [`DefinitionStatus::as_str`] (`\"retired\"`), not the enum serde name `\"Retired\"`.",
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "retired"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "RetireResponse",
+        "type": "object"
+      },
+      "ReversalBody": {
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "document_id",
+          "reason"
+        ],
+        "title": "ReversalBody",
+        "type": "object"
+      },
+      "ReverseIssueBody": {
+        "description": "POST `/api/v1/inventory/reversals` response: a document plus reversal fields.",
+        "properties": {
+          "id": {
+            "description": "Id.",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Kind.",
+            "type": "string"
+          },
+          "lines": {
+            "description": "Lines.",
+            "items": {
+              "$ref": "#/components/schemas/LineBody"
+            },
+            "type": "array"
+          },
+          "posted_group_id": {
+            "description": "Ledger group produced by posting.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reference": {
+            "description": "PO / WO / order reference.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reversal_group_id": {
+            "type": "string"
+          },
+          "status": {
+            "description": "Status.",
+            "type": "string"
+          },
+          "version": {
+            "description": "Version.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "lines",
+          "reason",
+          "reversal_group_id",
+          "status",
+          "version"
+        ],
+        "title": "ReverseIssueBody",
+        "type": "object"
+      },
+      "RevisionCreate": {
+        "description": "POST `/api/v1/documents/{id}/revisions` body. `id` is rejected with 400 if present. Omitted or null `content` is stored as `{}`.",
+        "properties": {
+          "content": {
+            "default": null
+          },
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "title": "RevisionCreate",
         "type": "object"
       },
       "RoleBody": {
@@ -932,6 +3227,53 @@
           "permissions"
         ],
         "title": "RoleBody",
+        "type": "object"
+      },
+      "SealRef": {
+        "description": "One seal in an archival bundle.",
+        "properties": {
+          "hash": {
+            "description": "Seal hash bytes. The audit export stores hex; the bundle decodes it and serde emits a JSON array of integers.",
+            "items": {
+              "format": "uint8",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "prev_hash": {
+            "description": "Previous seal hash, same encoding as [`Self::hash`]. JSON null when absent.",
+            "items": {
+              "format": "uint8",
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sealed_at": {
+            "description": "Sealed at.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "seq": {
+            "description": "Gap-free sequence.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "xid": {
+            "description": "Transaction id as text.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hash",
+          "sealed_at",
+          "seq",
+          "xid"
+        ],
         "type": "object"
       },
       "SerialBody": {
@@ -980,6 +3322,254 @@
           "version"
         ],
         "title": "SerialBody",
+        "type": "object"
+      },
+      "SetBody": {
+        "description": "PUT `/api/v1/items/{id}/custom-fields` body.",
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldWrite"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "title": "SetBody",
+        "type": "object"
+      },
+      "SetStatusBody": {
+        "description": "POST `/api/v1/lots/{id}/status` body.",
+        "properties": {
+          "reason": {
+            "description": "Reason (required).",
+            "type": "string"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LotStatus"
+              }
+            ],
+            "description": "New status."
+          }
+        },
+        "required": [
+          "reason",
+          "status"
+        ],
+        "title": "SetStatusBody",
+        "type": "object"
+      },
+      "SignatureEdgeBody": {
+        "description": "Wire shape of interpolated [`SignatureEdge`] (externally tagged; inner keys sorted).",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "description": "`SignatureEdge::Required`.",
+            "properties": {
+              "Required": {
+                "properties": {
+                  "edge": {
+                    "description": "Edge name.",
+                    "type": "string"
+                  },
+                  "meaning": {
+                    "description": "Meaning.",
+                    "type": "string"
+                  },
+                  "module": {
+                    "description": "Module / document type.",
+                    "type": "string"
+                  },
+                  "permission": {
+                    "description": "Permission key.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "edge",
+                  "meaning",
+                  "module",
+                  "permission"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "Required"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "`SignatureEdge::NotRequired`.",
+            "properties": {
+              "NotRequired": {
+                "properties": {
+                  "edge": {
+                    "description": "Edge name.",
+                    "type": "string"
+                  },
+                  "module": {
+                    "description": "Module / document type.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Reason.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "edge",
+                  "module",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "NotRequired"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SignatureManifest": {
+        "description": "D-2b-2 manifestation object (the inner `signature` member).",
+        "properties": {
+          "components_used": {
+            "description": "Components used.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "credential_kind": {
+            "description": "Credential kind.",
+            "type": "string"
+          },
+          "id": {
+            "description": "Signature id.",
+            "type": "string"
+          },
+          "meaning": {
+            "description": "Meaning snapshot.",
+            "type": "string"
+          },
+          "printed_name": {
+            "description": "Printed name snapshot.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Reason snapshot.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "record": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManifestRecord"
+              }
+            ],
+            "description": "Record reference including `doc_type`."
+          },
+          "record_content_hash": {
+            "description": "Hex SHA-256.",
+            "type": "string"
+          },
+          "signed_at": {
+            "description": "UTC instant (`…Z`).",
+            "type": "string"
+          },
+          "signed_at_local": {
+            "description": "Derived local stamp with offset.",
+            "type": "string"
+          },
+          "signed_at_zone": {
+            "description": "Signer's IANA zone.",
+            "type": "string"
+          },
+          "signer_id": {
+            "description": "Signer principal id.",
+            "type": "string"
+          },
+          "superseded": {
+            "description": "True when the live `sm.instance.version` is greater than `record.version`.",
+            "type": "boolean"
+          },
+          "superseded_by_version": {
+            "default": null,
+            "description": "Live instance version when [`Self::superseded`]; otherwise `null`.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "components_used",
+          "credential_kind",
+          "id",
+          "meaning",
+          "printed_name",
+          "record",
+          "record_content_hash",
+          "signed_at",
+          "signed_at_local",
+          "signed_at_zone",
+          "signer_id",
+          "superseded"
+        ],
+        "type": "object"
+      },
+      "SigningSecretBody": {
+        "additionalProperties": false,
+        "description": "POST `/api/v1/identity/me/signing-credential` body.",
+        "properties": {
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "title": "SigningSecretBody",
+        "type": "object"
+      },
+      "TemplateSummary": {
+        "description": "Latest effective template row (list seam; no body).",
+        "properties": {
+          "body_hash": {
+            "description": "SHA-256 of the template body, lowercase hex.",
+            "type": "string"
+          },
+          "semantic_version": {
+            "description": "Semantic version stamped on that row.",
+            "type": "string"
+          },
+          "template_id": {
+            "description": "Template id (`document_revision`, `generic_record`, `work_order_traveler`).",
+            "type": "string"
+          },
+          "version": {
+            "description": "Integer version of the latest effective row.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body_hash",
+          "semantic_version",
+          "template_id",
+          "version"
+        ],
+        "title": "TemplateSummary",
         "type": "object"
       },
       "TraceBody": {
@@ -1145,6 +3735,357 @@
         "description": "Opaque catalog identifier. Core never interprets the catalog.",
         "format": "int64",
         "type": "integer"
+      },
+      "ValidationManifestBody": {
+        "description": "GET `/api/v1/iq/manifest` body.\n\nThis is the live `json!` blob, not [`wicket_module::ConfigurationManifest`]: the handler omits `app_version`. Field order is alphabetical so `Json(self)` matches `serde_json::json!` (`Map` is `BTreeMap` without `preserve_order`).",
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "kernel_order": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "modules": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestModuleBody"
+            },
+            "type": "array"
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "signature_edges": {
+            "items": {
+              "$ref": "#/components/schemas/SignatureEdgeBody"
+            },
+            "type": "array"
+          },
+          "spec_version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_hash",
+          "kernel_order",
+          "modules",
+          "profile_id",
+          "signature_edges",
+          "spec_version"
+        ],
+        "title": "ValidationManifestBody",
+        "type": "object"
+      },
+      "ValueWire": {
+        "description": "Wire shape for a stored value (`docs/10`).\n\n[`Self::type_name`] is [`FieldType::as_str`] (`\"string\"`), not the enum's serde name (`\"String\"`). [`Self::value`] is the handler `value_payload` JSON, not [`Value`]'s externally tagged serde.",
+        "properties": {
+          "definition_version": {
+            "description": "Definition version at write time.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "key": {
+            "description": "Field key.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Type token from [`FieldType::as_str`].",
+            "enum": [
+              "string",
+              "text",
+              "integer",
+              "decimal",
+              "bool",
+              "date",
+              "enum",
+              "reference"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "description": "Payload for [`Self::type_name`], or null when the definition is unset.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "scale": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "scale",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "precision": {
+                    "enum": [
+                      "day",
+                      "month",
+                      "year"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "format": "date",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "precision",
+                  "value"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "entity": {
+                    "type": "string"
+                  },
+                  "id": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "entity",
+                  "id"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": [
+          "definition_version",
+          "key",
+          "type",
+          "value"
+        ],
+        "title": "ValueWire",
+        "type": "object"
+      },
+      "WoCreate": {
+        "properties": {
+          "id": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "item_id",
+          "quantity",
+          "revision"
+        ],
+        "title": "WoCreate",
+        "type": "object"
+      },
+      "WorkOrderCompleteJson": {
+        "description": "Wire body `complete_wo` emits today. Not `wicket_mod_production_min::api::CompletionBody`.",
+        "properties": {
+          "application_version": {
+            "type": "string"
+          },
+          "configuration_version": {
+            "type": "string"
+          },
+          "finished_lot": {
+            "$ref": "#/components/schemas/FinishedLotRef"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "posted_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "application_version",
+          "configuration_version",
+          "finished_lot",
+          "group_id",
+          "id",
+          "quantity",
+          "status",
+          "version"
+        ],
+        "title": "WorkOrderCompleteJson",
+        "type": "object"
+      },
+      "WorkOrderIssueLine": {
+        "description": "Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here).",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MoneyBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entered": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnyQuantity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "lot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "package_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnyQuantity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "item_id"
+        ],
+        "type": "object"
+      },
+      "WorkOrderJson": {
+        "description": "Wire body `wo_json` emits today. Not `wicket_mod_production_min::api::WorkOrderBody`.",
+        "properties": {
+          "application_version": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "configuration_version": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/AnyQuantity"
+          },
+          "released_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "wip_location_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "application_version",
+          "configuration_version",
+          "id",
+          "item_id",
+          "quantity",
+          "revision",
+          "status",
+          "version"
+        ],
+        "title": "WorkOrderJson",
+        "type": "object"
       }
     }
   },
@@ -1160,6 +4101,13 @@
         "operationId": "exportAudit",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1217,6 +4165,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CalibrationApprovedBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1256,6 +4211,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_Definition"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1292,8 +4254,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefineBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefineResponse"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1351,6 +4330,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetireResponse"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1389,8 +4375,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledDocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1431,6 +4434,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledDocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1488,6 +4498,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledDocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1535,8 +4552,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevisionCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentRevisionBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1594,6 +4628,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledDocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1623,6 +4664,13 @@
         "operationId": "esignChallenge",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Challenge"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1661,8 +4709,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EsignMintBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifestation"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1703,6 +4768,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Manifestation"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -1743,6 +4815,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivalBundle"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2076,8 +5155,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoContentJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2116,8 +5212,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SigningSecretBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoContentJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2211,8 +5324,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePrincipalBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2299,6 +5429,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2346,8 +5483,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmptyBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoContentJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2395,8 +5549,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoContentJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2444,8 +5615,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenameBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoContentJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2634,8 +5822,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2739,8 +5944,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2787,8 +6009,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReleaseInvBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2827,8 +6066,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReversalBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseIssueBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2858,6 +6114,13 @@
         "operationId": "getValidationManifest",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationManifestBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -2975,8 +6238,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3182,6 +6462,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_ValueWire"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3227,8 +6514,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_ValueWire"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3286,6 +6590,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3336,6 +6647,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_for_Location"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3372,8 +6690,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationSummary"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3414,6 +6749,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_for_LocationTreeNode"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3454,6 +6796,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocationSummary"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3511,6 +6860,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Location"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3561,6 +6917,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_LotBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3597,8 +6960,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLotBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3686,6 +7066,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_PackageListItem"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3731,8 +7118,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackageCreatedBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3825,8 +7229,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSerialsBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_SerialBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3882,8 +7303,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStatusBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LotBody"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3949,6 +7387,13 @@
         "operationId": "getOpenApi",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenApiDocument"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -3987,8 +7432,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchivePrintResponse"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4027,8 +7489,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RenderBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderPrintResponse"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4058,6 +7537,13 @@
         "operationId": "listPrintTemplates",
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_TemplateSummary"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4116,6 +7602,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListBody_for_WorkOrderJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4152,8 +7645,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WoCreate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4240,6 +7750,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4295,8 +7812,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderCompleteJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4352,8 +7886,25 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueBody"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
@@ -4411,6 +7962,13 @@
         ],
         "responses": {
           "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkOrderJson"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {
