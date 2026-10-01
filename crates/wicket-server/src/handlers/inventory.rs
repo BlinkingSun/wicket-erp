@@ -74,9 +74,7 @@ impl JsonSchema for ReceiptLine {
         for name in ["quantity", "entered"] {
             properties.insert(
                 name.to_owned(),
-                null_default(
-                    generator.subschema_for::<Option<wicket_mod_inventory::QuantityBody>>(),
-                ),
+                null_default(generator.subschema_for::<Option<wicket_core::AnyQuantity>>()),
             );
         }
         properties.insert(
