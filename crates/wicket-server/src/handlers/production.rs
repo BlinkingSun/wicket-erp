@@ -4,8 +4,9 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use rust_decimal::Decimal;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wicket_core::{Identifier, ItemId, LocationId, LotId};
 use wicket_db::Tx;
 use wicket_mod_production_min::{
@@ -17,12 +18,12 @@ use super::{
     line_input, nonempty, parse_json, parse_limit, rid,
 };
 use crate::boot::AppState;
-use crate::envelope::error_response;
+use crate::envelope::{ListBody, error_response};
 use crate::error::{Error, Result};
 use crate::extract::{self, check_version, require_if_match};
 use crate::idempotency;
 use crate::session::write_context;
-use crate::wire::{QuantityBody, parse_uuid};
+use crate::wire::{MoneyBody, QuantityBody, parse_uuid};
 
 use axum::body::Bytes;
 
@@ -46,9 +47,10 @@ fn map_genealogy_err(e: wicket_mod_genealogy::Error) -> Error {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct WoCreate {
     item_id: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
     quantity: QuantityBody,
     revision: String,
     #[serde(default)]
@@ -110,21 +112,45 @@ async fn create_wo_inner(
     Ok((201, body))
 }
 
+/// Wire body `wo_json` emits today. Not `wicket_mod_production_min::api::WorkOrderBody`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct WorkOrderJson {
+    id: String,
+    number: Option<String>,
+    item_id: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
+    quantity: QuantityBody,
+    status: String,
+    revision: String,
+    wip_location_id: Option<String>,
+    version: i64,
+    application_version: String,
+    configuration_version: String,
+    released_at: Option<String>,
+    completed_at: Option<String>,
+}
+
+impl WorkOrderJson {
+    fn from_work_order(wo: &wicket_mod_production_min::WorkOrder) -> Self {
+        Self {
+            id: wo.id.to_string(),
+            number: wo.number.clone(),
+            item_id: wo.item.to_string(),
+            quantity: QuantityBody::from_qty(&wo.quantity_ordered),
+            status: wo.status.as_str().to_string(),
+            revision: wo.revision.clone(),
+            wip_location_id: wo.wip_location.map(|l| l.to_string()),
+            version: wo.version,
+            application_version: wo.application_version.clone(),
+            configuration_version: wo.configuration_version.clone(),
+            released_at: wo.released_at.map(|t| t.to_rfc3339()),
+            completed_at: wo.completed_at.map(|t| t.to_rfc3339()),
+        }
+    }
+}
+
 fn wo_json(wo: &wicket_mod_production_min::WorkOrder) -> Result<Value> {
-    Ok(json!({
-        "id": wo.id.to_string(),
-        "number": wo.number,
-        "item_id": wo.item.to_string(),
-        "quantity": QuantityBody::from_qty(&wo.quantity_ordered),
-        "status": wo.status.as_str(),
-        "revision": wo.revision,
-        "wip_location_id": wo.wip_location.map(|l| l.to_string()),
-        "version": wo.version,
-        "application_version": wo.application_version,
-        "configuration_version": wo.configuration_version,
-        "released_at": wo.released_at.map(|t| t.to_rfc3339()),
-        "completed_at": wo.completed_at.map(|t| t.to_rfc3339()),
-    }))
+    Ok(serde_json::to_value(WorkOrderJson::from_work_order(wo))?)
 }
 
 /// GET /api/v1/work-orders/{id}
@@ -219,12 +245,15 @@ async fn list_work_orders_inner(
     .await;
     tx.rollback().await?;
     let page = page.map_err(map_production_err)?;
-    let data: Result<Vec<Value>> = page.data.iter().map(wo_json).collect();
-    Ok(json!({
-        "data": data?,
-        "next_cursor": page.next_cursor,
-        "has_more": page.has_more,
-    }))
+    Ok(serde_json::to_value(&ListBody {
+        data: page
+            .data
+            .iter()
+            .map(WorkOrderJson::from_work_order)
+            .collect(),
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+    })?)
 }
 
 /// GET /api/v1/work-orders/resolve
@@ -327,9 +356,24 @@ async fn release_wo_inner(
     Ok((200, body))
 }
 
-#[derive(Deserialize)]
+/// Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here).
+#[allow(dead_code)]
+#[derive(JsonSchema)]
+struct WorkOrderIssueLine {
+    item_id: String,
+    lot_id: Option<String>,
+    package_id: Option<String>,
+    #[schemars(with = "Option<wicket_core::AnyQuantity>")]
+    quantity: Option<QuantityBody>,
+    #[schemars(with = "Option<wicket_core::AnyQuantity>")]
+    entered: Option<QuantityBody>,
+    amount: Option<MoneyBody>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct IssueBody {
     from_location_id: String,
+    #[schemars(with = "Vec<WorkOrderIssueLine>")]
     lines: Vec<ReceiptLine>,
 }
 
@@ -415,10 +459,12 @@ async fn issue_wo_inner(
     Ok((200, body))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct CompleteBody {
+    #[schemars(with = "wicket_core::AnyQuantity")]
     quantity: QuantityBody,
     #[serde(default)]
+    #[schemars(with = "Option<wicket_core::AnyQuantity>")]
     scrap: Option<QuantityBody>,
     #[serde(default)]
     finished_lot_number: Option<String>,
@@ -427,6 +473,28 @@ pub struct CompleteBody {
     serial_from: Option<String>,
     #[serde(default)]
     serial_template: Option<String>,
+}
+
+/// Nested `finished_lot` object on the complete response blob.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct FinishedLotRef {
+    id: String,
+}
+
+/// Wire body `complete_wo` emits today. Not `wicket_mod_production_min::api::CompletionBody`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct WorkOrderCompleteJson {
+    id: String,
+    number: Option<String>,
+    status: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
+    quantity: QuantityBody,
+    finished_lot: FinishedLotRef,
+    group_id: String,
+    version: i64,
+    posted_at: Option<String>,
+    application_version: String,
+    configuration_version: String,
 }
 
 /// POST .../complete
@@ -507,20 +575,20 @@ async fn complete_wo_inner(
     )
     .await?;
     let wo = wicket_mod_production_min::load(&mut tx, wo_id).await?;
-    let body = json!({
-        "id": wo.id.to_string(),
-        "number": wo.number,
-        "status": wo.status.as_str(),
-        "quantity": QuantityBody::from_qty(&wo.quantity_ordered),
-        "finished_lot": {
-            "id": completion.finished_lot.to_string(),
+    let body = serde_json::to_value(&WorkOrderCompleteJson {
+        id: wo.id.to_string(),
+        number: wo.number.clone(),
+        status: wo.status.as_str().to_string(),
+        quantity: QuantityBody::from_qty(&wo.quantity_ordered),
+        finished_lot: FinishedLotRef {
+            id: completion.finished_lot.to_string(),
         },
-        "group_id": completion.group_id.to_string(),
-        "version": wo.version,
-        "posted_at": wo.completed_at.map(|t| t.to_rfc3339()),
-        "application_version": wo.application_version,
-        "configuration_version": wo.configuration_version,
-    });
+        group_id: completion.group_id.to_string(),
+        version: wo.version,
+        posted_at: wo.completed_at.map(|t| t.to_rfc3339()),
+        application_version: wo.application_version.clone(),
+        configuration_version: wo.configuration_version.clone(),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &body).await?;
     tx.commit().await?;
     Ok((200, body))
@@ -674,5 +742,151 @@ async fn get_genealogy_job_inner(
     {
         Some(status) => serde_json::to_value(&status).map_err(Error::from),
         None => Err(Error::not_found("job not found")),
+    }
+}
+
+#[cfg(test)]
+mod wire_freeze {
+    use super::*;
+    use serde_json::json;
+
+    fn qty() -> QuantityBody {
+        QuantityBody {
+            amount: "5.00000000".into(),
+            unit: 1,
+            dimension: "Count".into(),
+        }
+    }
+
+    #[test]
+    fn work_order_json_matches_wo_json_blob() {
+        let quantity = qty();
+        let typed = WorkOrderJson {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            number: None,
+            item_id: "01932c5a-8b10-7001-8000-000000000002".into(),
+            quantity: quantity.clone(),
+            status: "draft".into(),
+            revision: "C".into(),
+            wip_location_id: None,
+            version: 1,
+            application_version: "0.0.0-dev".into(),
+            configuration_version: "plain-shop".into(),
+            released_at: None,
+            completed_at: None,
+        };
+        let blob = json!({
+            "id": "01932c5a-8b10-7001-8000-000000000001",
+            "number": null,
+            "item_id": "01932c5a-8b10-7001-8000-000000000002",
+            "quantity": quantity,
+            "status": "draft",
+            "revision": "C",
+            "wip_location_id": null,
+            "version": 1,
+            "application_version": "0.0.0-dev",
+            "configuration_version": "plain-shop",
+            "released_at": null,
+            "completed_at": null,
+        });
+        assert_eq!(serde_json::to_value(&typed).unwrap(), blob);
+    }
+
+    #[test]
+    fn work_order_json_matches_populated_wo_json_blob() {
+        let quantity = qty();
+        let typed = WorkOrderJson {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            number: Some("WO-2026-0001".into()),
+            item_id: "01932c5a-8b10-7001-8000-000000000002".into(),
+            quantity: quantity.clone(),
+            status: "released".into(),
+            revision: "C".into(),
+            wip_location_id: Some("01932c5a-8b10-7001-8000-000000000003".into()),
+            version: 2,
+            application_version: "0.0.0-dev".into(),
+            configuration_version: "plain-shop".into(),
+            released_at: Some("2026-09-19T12:00:00+00:00".into()),
+            completed_at: None,
+        };
+        let blob = json!({
+            "id": "01932c5a-8b10-7001-8000-000000000001",
+            "number": "WO-2026-0001",
+            "item_id": "01932c5a-8b10-7001-8000-000000000002",
+            "quantity": quantity,
+            "status": "released",
+            "revision": "C",
+            "wip_location_id": "01932c5a-8b10-7001-8000-000000000003",
+            "version": 2,
+            "application_version": "0.0.0-dev",
+            "configuration_version": "plain-shop",
+            "released_at": "2026-09-19T12:00:00+00:00",
+            "completed_at": null,
+        });
+        assert_eq!(serde_json::to_value(&typed).unwrap(), blob);
+    }
+
+    #[test]
+    fn list_envelope_matches_json_blob() {
+        let quantity = qty();
+        let row = WorkOrderJson {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            number: None,
+            item_id: "01932c5a-8b10-7001-8000-000000000002".into(),
+            quantity: quantity.clone(),
+            status: "draft".into(),
+            revision: "C".into(),
+            wip_location_id: None,
+            version: 1,
+            application_version: "0.0.0-dev".into(),
+            configuration_version: "plain-shop".into(),
+            released_at: None,
+            completed_at: None,
+        };
+        let typed = ListBody {
+            data: vec![row.clone()],
+            next_cursor: None,
+            has_more: false,
+        };
+        let blob = json!({
+            "data": [row],
+            "next_cursor": null,
+            "has_more": false,
+        });
+        assert_eq!(serde_json::to_value(&typed).unwrap(), blob);
+    }
+
+    #[test]
+    fn complete_json_matches_complete_wo_blob() {
+        let quantity = qty();
+        let typed = WorkOrderCompleteJson {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            number: Some("WO-2026-0001".into()),
+            status: "completed".into(),
+            quantity: quantity.clone(),
+            finished_lot: FinishedLotRef {
+                id: "01932c5a-8b10-7001-8000-000000000004".into(),
+            },
+            group_id: "01932c5a-8b10-7001-8000-000000000005".into(),
+            version: 4,
+            posted_at: Some("2026-09-19T13:00:00+00:00".into()),
+            application_version: "0.0.0-dev".into(),
+            configuration_version: "plain-shop".into(),
+        };
+        let blob = json!({
+            "id": "01932c5a-8b10-7001-8000-000000000001",
+            "number": "WO-2026-0001",
+            "status": "completed",
+            "quantity": quantity,
+            "finished_lot": {
+                "id": "01932c5a-8b10-7001-8000-000000000004",
+            },
+            "group_id": "01932c5a-8b10-7001-8000-000000000005",
+            "version": 4,
+            "posted_at": "2026-09-19T13:00:00+00:00",
+            "application_version": "0.0.0-dev",
+            "configuration_version": "plain-shop",
+        });
+        assert_eq!(serde_json::to_value(&typed).unwrap(), blob);
     }
 }
