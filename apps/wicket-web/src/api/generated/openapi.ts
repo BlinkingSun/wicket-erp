@@ -2018,14 +2018,14 @@ export interface components {
             /** @default null */
             amount: components["schemas"]["MoneyBody"] | null;
             /** @default null */
-            entered: components["schemas"]["QuantityBody"] | null;
+            entered: components["schemas"]["AnyQuantity"] | null;
             item_id: string;
             /** @default null */
             lot_id: string | null;
             /** @default null */
             package_id: string | null;
             /** @default null */
-            quantity: components["schemas"]["QuantityBody"] | null;
+            quantity: components["schemas"]["AnyQuantity"] | null;
         };
         /**
          * RecordBody

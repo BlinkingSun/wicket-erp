@@ -2800,7 +2800,7 @@
           "entered": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/QuantityBody"
+                "$ref": "#/components/schemas/AnyQuantity"
               },
               {
                 "type": "null"
@@ -2828,7 +2828,7 @@
           "quantity": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/QuantityBody"
+                "$ref": "#/components/schemas/AnyQuantity"
               },
               {
                 "type": "null"
