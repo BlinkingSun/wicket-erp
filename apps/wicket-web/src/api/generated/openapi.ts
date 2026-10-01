@@ -1010,20 +1010,327 @@ export interface components {
             /** @description Result URL. */
             result_url: string;
         };
+        /** @description Off-box anchor, if any. */
+        AnchorRef: {
+            /** @description Receipt. */
+            receipt?: string | null;
+            /** @description Sink name. */
+            sink: string;
+        };
         AnyQuantity: {
             amount: string;
             dimension: components["schemas"]["DimensionKind"];
             unit: components["schemas"]["UnitId"];
         };
         /**
+         * ArchivalBundle
+         * @description Archival bundle (D-2b-8).
+         */
+        ArchivalBundle: {
+            /** @description Anchor, if recorded. */
+            anchor?: components["schemas"]["AnchorRef"] | null;
+            /** @description Audit event ids covering this signature (row-change + `esign_id` link). */
+            audit_event_ids: string[];
+            /** @description Manifestation. */
+            manifestation: components["schemas"]["Manifestation"];
+            /** @description SHA-256 of that snapshot. On the wire this is a JSON array of 32 integers, not the hex string on [`SignatureManifest::record_content_hash`]. */
+            record_content_hash: number[];
+            /** @description Canonical snapshot that was hashed. Any JSON value. */
+            record_snapshot: unknown;
+            /** @description Seals covering those events (`prev_hash` chain from `audit.tx_seal`). */
+            seals: components["schemas"]["SealRef"][];
+        };
+        /**
+         * ArchiveBody
+         * @description POST `/api/v1/print/archive` body.
+         */
+        ArchiveBody: {
+            output_hash: string;
+            record: components["schemas"]["RecordBody"];
+        };
+        /**
+         * ArchivePrintResponse
+         * @description POST `/api/v1/print/archive` success body.
+         */
+        ArchivePrintResponse: {
+            /** @description Lowercase hex SHA-256 of the archived blob. */
+            blob_hash: string;
+        };
+        /**
+         * AuditExportBody
+         * @description GET `/api/v1/audit` body.
+         *
+         *     Not [`wicket_audit::Head`]: the wire omits `hash` and `sealed_at`. Inner keys match the `json!` blob (alphabetical). `head` is always present (`null` when the chain has no seal). A derived `Option` omits the key from `required`; [`audit_head_schema`] keeps the key required and the value nullable.
+         */
+        AuditExportBody: {
+            head: components["schemas"]["AuditHeadBody"] | null;
+        };
+        /** @description Nested `head` object on [`AuditExportBody`]. */
+        AuditHeadBody: {
+            chain_algo: string;
+            /** Format: int32 */
+            row_count: number;
+            /** Format: int64 */
+            seq: number;
+            xid: string;
+        };
+        /**
+         * CalibrationApprovedBody
+         * @description POST `/api/v1/calibration/certificates/{id}/approve` success body.
+         *
+         *     The engine emits `{ id, status: "approved" }`. `status` is that literal, not an open string of future states.
+         */
+        CalibrationApprovedBody: {
+            id: string;
+            /**
+             * @description Always the string `"approved"`.
+             * @enum {string}
+             */
+            status: "approved";
+        };
+        /**
+         * Challenge
+         * @description Wire shape for `POST /esign/challenges`.
+         */
+        Challenge: {
+            /** @description Components the client must present. */
+            components_required: string[];
+            /** @description Credential kind (`signing_password` / `idp_step_up`). */
+            credential_kind: string;
+            /**
+             * Format: date-time
+             * @description When the current signing session expires, if any.
+             */
+            signing_session_expires_at?: string | null;
+        };
+        /** CompleteBody */
+        CompleteBody: {
+            /** @default null */
+            finished_lot_number: string | null;
+            location_id: string;
+            quantity: components["schemas"]["AnyQuantity"];
+            /** @default null */
+            scrap: components["schemas"]["AnyQuantity"] | null;
+            /** @default null */
+            serial_from: string | null;
+            /** @default null */
+            serial_template: string | null;
+        };
+        /**
+         * ControlledDocumentBody
+         * @description Document response for create, get, submit, and approve. `version` is the state-machine instance version.
+         */
+        ControlledDocumentBody: {
+            id: string;
+            kind: string;
+            legal_hold: boolean;
+            number: string;
+            retention_class: string;
+            status: string;
+            title: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** CountBody */
+        CountBody: {
+            lines: components["schemas"]["CountLineBody"][];
+            location_id: string;
+            /** @default null */
+            reference: string | null;
+            /** @default null */
+            tolerance: string | null;
+        };
+        CountLineBody: {
+            counted: components["schemas"]["QuantityBody"];
+            expected: components["schemas"]["QuantityBody"];
+            item_id: string;
+            /** @default null */
+            lot_id: string | null;
+        };
+        /**
+         * CreateLotBody
+         * @description POST `/api/v1/lots` body.
+         */
+        CreateLotBody: {
+            /** @description Certificate reference. */
+            cert_ref?: string | null;
+            /** @description Expiry `{value, precision}`. */
+            expiry?: components["schemas"]["ExpiryWire"] | null;
+            /** @description Heat / source reference. */
+            heat?: string | null;
+            /** @description Optional supplied kernel identifier. */
+            identifier?: string | null;
+            /**
+             * Format: uuid
+             * @description Item this lot belongs to.
+             */
+            item_id: string;
+            /** @description Initial status. */
+            status?: components["schemas"]["LotStatus"] | null;
+            /** @description Supplier lot cross-reference. */
+            supplier_lot?: string | null;
+            /** @description Generator template when `identifier` is absent. */
+            template?: string | null;
+        };
+        /**
+         * CreatePrincipalBody
+         * @description POST `/api/v1/identity/principals` body.
+         */
+        CreatePrincipalBody: {
+            display_name: string;
+            /** @default null */
+            id: string | null;
+            password: string;
+            /** @default null */
+            principal_kind: ("User" | "Service" | "Migration") | null;
+            username: string;
+        };
+        /**
+         * CreateSerialsBody
+         * @description POST `/api/v1/lots/{id}/serials` body.
+         */
+        CreateSerialsBody: {
+            /**
+             * Format: uint32
+             * @description How many serials to allocate.
+             */
+            count: number;
+            /** @description Generator template. */
+            template?: string | null;
+        };
+        /**
          * Format: int32
          * @description ISO 4217 numeric currency code; the catalog row lives in the database.
          */
         CurrencyId: number;
+        /**
+         * DefineBody
+         * @description POST `/api/v1/customfields/definitions` body.
+         *
+         *     `type` is [`FieldType::as_str`] (`"string"`). `id`, when present, is rejected.
+         */
+        DefineBody: {
+            entity: string;
+            /** @default null */
+            id: string | null;
+            /** @default false */
+            indexed: boolean;
+            key: string;
+            label: string;
+            owner_module: string;
+            /** @default false */
+            required: boolean;
+            /** @enum {string} */
+            type: "string" | "text" | "integer" | "decimal" | "bool" | "date" | "enum" | "reference";
+            /** @default  */
+            validation_rule: string;
+        };
+        /**
+         * DefineResponse
+         * @description POST `/api/v1/customfields/definitions` 201 body. Subset of [`Definition`].
+         */
+        DefineResponse: {
+            entity: string;
+            /** Format: uuid */
+            id: string;
+            key: string;
+        };
+        /**
+         * Definition
+         * @description Effectivity-versioned field definition.
+         */
+        Definition: {
+            /** @description Entity name (`items.item`, …). */
+            entity: string;
+            /** @description Stored type. */
+            field_type: components["schemas"]["FieldType"];
+            /** @description Stable id. */
+            id: components["schemas"]["DefinitionId"];
+            /** @description Indexed hint (per-type btree exists on PK). */
+            indexed: boolean;
+            /** @description Field key within the entity. */
+            key: string;
+            /** @description Human label. */
+            label: string;
+            /** @description Owning module id (`mod-udi`, …). */
+            owner_module: string;
+            /** @description Required on the record. */
+            required: boolean;
+            /** @description Active or retired. */
+            status: components["schemas"]["DefinitionStatus"];
+            /** @description Validation rule string (`gs1-gtin`, `regex:…`, …). */
+            validation_rule: string;
+            /**
+             * Format: int32
+             * @description Version (increments on configuration change).
+             */
+            version: number;
+        };
+        /**
+         * Format: uuid
+         * @description Stable definition identity (all versions share this id).
+         *
+         *     Serde is the inner uuid string (newtype). The derived schema is that string with `format: uuid`.
+         */
+        DefinitionId: string;
+        /**
+         * @description Definition lifecycle.
+         *
+         *     Serde emits the variant name (`"Active"` / `"Retired"`), not [`Self::as_str`]. The retire HTTP blob sends the `as_str` token `"retired"`.
+         */
+        DefinitionStatus: "Active" | "Retired";
         /** @description The sealed kernel dimension set. Adding a variant is a kernel change and a migration, never a customization. Modules cannot extend it. */
         DimensionKind: "Count" | "Length" | "Mass" | "Time" | "Volume" | "Area";
         /** @description Trace direction (SPEC query API). */
         Direction: "backward" | "forward" | "both";
+        /**
+         * DocumentBody
+         * @description Wire document.
+         */
+        DocumentBody: {
+            /** @description Id. */
+            id: string;
+            /** @description Kind. */
+            kind: string;
+            /** @description Lines. */
+            lines: components["schemas"]["LineBody"][];
+            /** @description Ledger group produced by posting. */
+            posted_group_id?: string | null;
+            /** @description PO / WO / order reference. */
+            reference?: string | null;
+            /** @description Status. */
+            status: string;
+            /**
+             * Format: int64
+             * @description Version.
+             */
+            version: number;
+        };
+        /**
+         * DocumentCreate
+         * @description POST `/api/v1/documents` body. `id` is rejected with 400 if present.
+         */
+        DocumentCreate: {
+            /** @default null */
+            id: string | null;
+            kind: string;
+            retention_class: string;
+            title: string;
+        };
+        /**
+         * DocumentRevisionBody
+         * @description Wire shape for POST `/api/v1/documents/{id}/revisions` 201 response.
+         */
+        DocumentRevisionBody: {
+            document_id: string;
+            id: string;
+            label: string;
+        };
+        /**
+         * EmptyBody
+         * @description Empty JSON object accepted on deactivate (empty bytes also accepted).
+         */
+        EmptyBody: Record<string, never>;
         ErrorEnvelope: {
             error: {
                 code: string;
@@ -1033,6 +1340,31 @@ export interface components {
                 request_id: string;
             };
         };
+        EsignIdentBody: {
+            /** @default null */
+            code: string | null;
+            /** @default null */
+            secret: string | null;
+        };
+        /**
+         * EsignMintBody
+         * @description POST `/api/v1/esign/signatures` request body.
+         */
+        EsignMintBody: {
+            /** @default null */
+            doc_type: string | null;
+            identification: components["schemas"]["EsignIdentBody"];
+            meaning: string;
+            /** @default null */
+            reason: string | null;
+            record: components["schemas"]["EsignRecordBody"];
+        };
+        EsignRecordBody: {
+            id: string;
+            table: string;
+            /** Format: int64 */
+            version: number;
+        };
         /** @description Expiry precision. A bare `DATE` is forbidden (invariant 12). */
         ExpiryPrecision: "day" | "month" | "year";
         /** @description Wire expiry `{value, precision}` (`docs/10` §3.4). Month/year omit an invented day. */
@@ -1041,6 +1373,23 @@ export interface components {
             precision: components["schemas"]["ExpiryPrecision"];
             /** @description Value formatted to the claimed precision (`YYYY-MM-DD` / `YYYY-MM` / `YYYY`). */
             value: string;
+        };
+        /**
+         * @description Stored field type (no JSON blob).
+         *
+         *     Serde emits the variant name (`"String"`), not [`Self::as_str`] (`"string"`). List-definition JSON uses this enum; request bodies and [`ValueWire::type_name`] use the `as_str` token.
+         */
+        FieldType: "String" | "Text" | "Integer" | "Decimal" | "Bool" | "Date" | "Enum" | "Reference";
+        /** @description One field in [`SetBody`]. `type` is [`FieldType::as_str`]. */
+        FieldWrite: {
+            key: string;
+            /** @enum {string} */
+            type: "string" | "text" | "integer" | "decimal" | "bool" | "date" | "enum" | "reference";
+            value: unknown;
+        };
+        /** @description Nested `finished_lot` object on the complete response blob. */
+        FinishedLotRef: {
+            id: string;
         };
         /**
          * Impact
@@ -1053,6 +1402,11 @@ export interface components {
             shipments: string[];
             /** @description Serial units on those shipments. */
             units: string[];
+        };
+        /** IssueBody */
+        IssueBody: {
+            from_location_id: string;
+            lines: components["schemas"]["WorkOrderIssueLine"][];
         };
         /**
          * ItemBody
@@ -1096,6 +1450,31 @@ export interface components {
              * @description Version.
              */
             version: number;
+        };
+        /** ItemCreate */
+        ItemCreate: {
+            /** @default null */
+            cost_method: string | null;
+            description: string;
+            /** @default null */
+            id: string | null;
+            /** @default null */
+            kind: string | null;
+            number: string;
+            /** @default null */
+            residual_tolerance: string | null;
+            revision: string;
+            /** @default null */
+            standard: components["schemas"]["MoneyBody"] | null;
+            /**
+             * Format: int16
+             * @default 0
+             */
+            stock_scale: number;
+            /** Format: int64 */
+            stock_uom: number;
+            /** @default null */
+            type: string | null;
         };
         /**
          * ItemPatch
@@ -1172,6 +1551,43 @@ export interface components {
             /** @description Queue state. */
             state: components["schemas"]["JobState"];
         };
+        /** @description Wire document line. Lots and serials are entity ids, never text. */
+        LineBody: {
+            /** @description Canonical stock quantity. */
+            canonical: components["schemas"]["QuantityBody"];
+            /** @description Conversion factor. */
+            conversion_factor: string;
+            /** @description Entered quantity. */
+            entered: components["schemas"]["QuantityBody"];
+            /** @description Source location. */
+            from_location_id?: string | null;
+            /** @description Id. */
+            id: string;
+            /** @description Item. */
+            item_id: string;
+            /** @description Lot entity. */
+            lot_id?: string | null;
+            /** @description Package entity. */
+            package_id?: string | null;
+            /** @description Reason code. */
+            reason_code?: string | null;
+            /** @description Serial entity. */
+            serial_id?: string | null;
+            /** @description Destination location. */
+            to_location_id?: string | null;
+        };
+        /**
+         * ListBody_for_Definition
+         * @description List envelope (docs/10 §2.3).
+         */
+        ListBody_for_Definition: {
+            /** @description Page. */
+            data: components["schemas"]["Definition"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
         /**
          * ListBody_for_ItemBody
          * @description List envelope (docs/10 §2.3).
@@ -1179,6 +1595,30 @@ export interface components {
         ListBody_for_ItemBody: {
             /** @description Page. */
             data: components["schemas"]["ItemBody"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListBody_for_LotBody
+         * @description List envelope.
+         */
+        ListBody_for_LotBody: {
+            /** @description Page. */
+            data: components["schemas"]["LotBody"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListBody_for_PackageListItem
+         * @description List envelope (docs/10 §2.3).
+         */
+        ListBody_for_PackageListItem: {
+            /** @description Page. */
+            data: components["schemas"]["PackageListItem"][];
             /** @description Whether another page exists. */
             has_more: boolean;
             /** @description Opaque next cursor. */
@@ -1221,6 +1661,143 @@ export interface components {
             next_cursor?: string | null;
         };
         /**
+         * ListBody_for_TemplateSummary
+         * @description List envelope (docs/10 §2.3).
+         */
+        ListBody_for_TemplateSummary: {
+            /** @description Page. */
+            data: components["schemas"]["TemplateSummary"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListBody_for_ValueWire
+         * @description List envelope (docs/10 §2.3).
+         */
+        ListBody_for_ValueWire: {
+            /** @description Page. */
+            data: components["schemas"]["ValueWire"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListBody_for_WorkOrderJson
+         * @description List envelope (docs/10 §2.3).
+         */
+        ListBody_for_WorkOrderJson: {
+            /** @description Page. */
+            data: components["schemas"]["WorkOrderJson"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor. */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListResponse_for_Location
+         * @description List envelope (`docs/10` §2.3).
+         */
+        ListResponse_for_Location: {
+            /** @description Page of rows. */
+            data: components["schemas"]["Location"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor (`id` of the last row on this page). */
+            next_cursor?: string | null;
+        };
+        /**
+         * ListResponse_for_LocationTreeNode
+         * @description List envelope (`docs/10` §2.3).
+         */
+        ListResponse_for_LocationTreeNode: {
+            /** @description Page of rows. */
+            data: components["schemas"]["LocationTreeNode"][];
+            /** @description Whether another page exists. */
+            has_more: boolean;
+            /** @description Opaque next cursor (`id` of the last row on this page). */
+            next_cursor?: string | null;
+        };
+        /**
+         * LocCreate
+         * @description POST `/api/v1/locations` body.
+         */
+        LocCreate: {
+            code: string;
+            /** @default null */
+            kind: string | null;
+            name: string;
+        };
+        /**
+         * Location
+         * @description Location master row.
+         */
+        Location: {
+            /** @description Virtual boundary class when `kind == Virtual`. Serde is PascalCase variant name or null; `Boundary` has no `JsonSchema`. */
+            boundary_class?: string | null;
+            /** @description Unique uppercase code. */
+            code: string;
+            /**
+             * Format: uuid
+             * @description Primary key.
+             */
+            id: string;
+            /** @description Structural kind. */
+            kind: components["schemas"]["LocationKind"];
+            /** @description Display name. */
+            name: string;
+            /**
+             * Format: uuid
+             * @description Parent in the tree (`None` for roots).
+             */
+            parent_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Owning site.
+             */
+            site_id: string;
+            /** @description Active flag. */
+            status: components["schemas"]["LocationStatus"];
+            /**
+             * Format: int64
+             * @description Optimistic version.
+             */
+            version: number;
+            /**
+             * Format: uuid
+             * @description Work order for WIP rows.
+             */
+            work_order_id?: string | null;
+        };
+        /** @description Structural kind of a location node. */
+        LocationKind: "warehouse" | "area" | "bin" | "wip" | "osp" | "virtual";
+        /** @description Lifecycle status of a location row. */
+        LocationStatus: "active" | "inactive";
+        /**
+         * LocationSummary
+         * @description Wire body for `createLocation` and `getLocation`.
+         *
+         *     Five fields only. `listLocations` and `deactivateLocation` serialize the full [`Location`] row instead.
+         */
+        LocationSummary: {
+            code: string;
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["LocationKind"];
+            name: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description Tree node for hierarchical responses. */
+        LocationTreeNode: {
+            /** @description Children in sort order by code. */
+            children: components["schemas"]["LocationTreeNode"][];
+            /** @description This node. */
+            location: components["schemas"]["Location"];
+        };
+        /**
          * LoginBody
          * @description POST `/api/v1/identity/login` body.
          */
@@ -1250,7 +1827,7 @@ export interface components {
              * @description Server time of record.
              */
             created_at: string;
-            /** @description Expiry as `{date, precision}`. */
+            /** @description Expiry as `{value, precision}`. */
             expiry?: components["schemas"]["ExpiryWire"] | null;
             /** @description Heat / source reference. */
             heat?: string | null;
@@ -1280,6 +1857,35 @@ export interface components {
         };
         /** @description Lot / serial status. Inventory posts the corresponding movement; this module records the status and its history only. */
         LotStatus: "quarantine" | "available" | "hold" | "rejected";
+        /** @description Wire shape of one interpolated `ManifestModule` (keys sorted by `json!`). */
+        ManifestModuleBody: {
+            enabled: boolean;
+            id: string;
+            regulated: boolean;
+            version: string;
+        };
+        /** @description Record object inside the manifestation. */
+        ManifestRecord: {
+            /** @description Display document type. */
+            doc_type: string;
+            /** @description Record id. */
+            id: string;
+            /** @description Table name. */
+            table: string;
+            /**
+             * Format: int64
+             * @description Record version.
+             */
+            version: number;
+        };
+        /**
+         * Manifestation
+         * @description Exact wire shape: `{ "signature": { … } }`.
+         */
+        Manifestation: {
+            /** @description Signature manifestation. */
+            signature: components["schemas"]["SignatureManifest"];
+        };
         /** @description Wire money. */
         MoneyBody: {
             /** @description Amount as a decimal string. */
@@ -1304,12 +1910,64 @@ export interface components {
             visible: string[];
         };
         /**
+         * NoContentJson
+         * @description Idempotency replay shape and OpenAPI stand-in for HTTP 204 success (no response body).
+         */
+        NoContentJson: Record<string, never>;
+        /**
          * OnHandBody
          * @description GET `/api/v1/inventory/on-hand` body. Amounts are decimal strings, not `AnyQuantity`.
          */
         OnHandBody: {
             available: string;
             on_hand: string;
+        };
+        /**
+         * OpenApiDocument
+         * @description GET `/api/v1/openapi.json` — the OpenAPI 3.0.3 document (self-describing JSON object).
+         *
+         *     Schema-only: the handler still returns `Json<Value>` of [`crate::openapi::document`].
+         */
+        OpenApiDocument: Record<string, never>;
+        /**
+         * PackageCreate
+         * @description POST `/api/v1/lots/{id}/packages` body. `contained` is the AnyQuantity wire (`docs/10` §3.1); the handler stores it as [`QuantityBody`] so amount stays a decimal string. `label_ref` is accepted and stored, not echoed.
+         */
+        PackageCreate: {
+            contained: components["schemas"]["AnyQuantity"];
+            /** @default null */
+            label_ref: string | null;
+            level: string;
+            /** @default null */
+            parent_id: string | null;
+        };
+        /**
+         * PackageCreatedBody
+         * @description POST `/api/v1/lots/{id}/packages` 201 body. Frozen from the handler `json!` blob: field is `contained`, not `PackageBody.contained_quantity`; `label_ref` is omitted even when the request supplied one.
+         */
+        PackageCreatedBody: {
+            contained: components["schemas"]["AnyQuantity"];
+            id: string;
+            level: string;
+            lot_id: string;
+            parent_id?: string | null;
+        };
+        /**
+         * PackageListItem
+         * @description GET `/api/v1/lots/{id}/packages` item. Frozen from the handler `json!` blob: omits `lot_id` and `label_ref`.
+         */
+        PackageListItem: {
+            contained: components["schemas"]["AnyQuantity"];
+            id: string;
+            level: string;
+            parent_id?: string | null;
+        };
+        /**
+         * PasswordBody
+         * @description Login-credential mutation bodies (`password` field).
+         */
+        PasswordBody: {
+            password: string;
         };
         /**
          * PrincipalBody
@@ -1324,12 +1982,193 @@ export interface components {
             status: string;
             username: string;
         };
+        /** @description Wire quantity (`docs/10`: amount is a decimal string). */
+        QuantityBody: {
+            /** @description Amount as a decimal string. */
+            amount: string;
+            /** @description Dimension kind. */
+            dimension: string;
+            /**
+             * Format: int64
+             * @description Catalog unit id.
+             */
+            unit: number;
+        };
+        /** ReceiptBody */
+        ReceiptBody: {
+            /** @default null */
+            actor_id: string | null;
+            /** @default null */
+            entered: components["schemas"]["QuantityBody"] | null;
+            /** @default null */
+            item_id: string | null;
+            lines?: components["schemas"]["ReceiptLine"][] | null;
+            /** @default null */
+            location_id: string | null;
+            /** @default null */
+            lot_id: string | null;
+            /** @default null */
+            purchase_order: string | null;
+            /** @default null */
+            quantity: components["schemas"]["QuantityBody"] | null;
+            /** @default null */
+            unit_cost: components["schemas"]["MoneyBody"] | null;
+        };
+        ReceiptLine: {
+            /** @default null */
+            amount: components["schemas"]["MoneyBody"] | null;
+            /** @default null */
+            entered: components["schemas"]["QuantityBody"] | null;
+            item_id: string;
+            /** @default null */
+            lot_id: string | null;
+            /** @default null */
+            package_id: string | null;
+            /** @default null */
+            quantity: components["schemas"]["QuantityBody"] | null;
+        };
+        /**
+         * RecordBody
+         * @description Record locator shared by print render and archive request bodies.
+         */
+        RecordBody: {
+            id: string;
+            table: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** ReleaseInvBody */
+        ReleaseInvBody: {
+            /** @default null */
+            amount: components["schemas"]["MoneyBody"] | null;
+            entered: components["schemas"]["QuantityBody"];
+            from_location_id: string;
+            lot_id: string;
+            to_location_id: string;
+        };
+        /**
+         * RenameBody
+         * @description POST `/api/v1/identity/principals/{id}/rename` body.
+         */
+        RenameBody: {
+            display_name: string;
+        };
+        /**
+         * RenderBody
+         * @description POST `/api/v1/print/render` body.
+         */
+        RenderBody: {
+            format: string;
+            record: components["schemas"]["RecordBody"];
+            template_id: string;
+        };
+        /**
+         * RenderPrintResponse
+         * @description POST `/api/v1/print/render` success body.
+         *
+         *     This is the archival blob the handler emits today, not [`wicket_print::Rendered`]. `output_hash` and `blob` hashes elsewhere are lowercase hex. `bytes_base64` is the rendition bytes. `manifestation` is [`Manifestation`] as `wicket-esign` serializes it. That type lives in a sibling crate, so its schema is hand-specified here rather than derived on a copy.
+         */
+        RenderPrintResponse: {
+            /** @description Base64 of the rendition bytes. */
+            bytes_base64: string;
+            /** @description Esign snapshots for the record. Empty when none exist. */
+            manifestation: {
+                signature: {
+                    components_used: string[];
+                    credential_kind: string;
+                    id: string;
+                    meaning: string;
+                    printed_name: string;
+                    reason: string | null;
+                    record: {
+                        doc_type: string;
+                        id: string;
+                        table: string;
+                        /** Format: int64 */
+                        version: number;
+                    };
+                    record_content_hash: string;
+                    signed_at: string;
+                    signed_at_local: string;
+                    signed_at_zone: string;
+                    signer_id: string;
+                    superseded: boolean;
+                    /**
+                     * Format: int64
+                     * @default null
+                     */
+                    superseded_by_version: number | null;
+                };
+            }[];
+            /** @description Lowercase hex SHA-256 of the rendition bytes. */
+            output_hash: string;
+            /** @description Crate version that produced the bytes. */
+            renderer_version: string;
+            /**
+             * Format: int32
+             * @description Template row version used.
+             */
+            template_version: number;
+        };
         /**
          * ResolveIdBody
          * @description GET `/api/v1/items/resolve` and `/api/v1/work-orders/resolve` body.
          */
         ResolveIdBody: {
             id: string;
+        };
+        /**
+         * RetireResponse
+         * @description POST `/api/v1/customfields/definitions/{id}/retire` body.
+         *
+         *     `status` is [`DefinitionStatus::as_str`] (`"retired"`), not the enum serde name `"Retired"`.
+         */
+        RetireResponse: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "retired";
+        };
+        /** ReversalBody */
+        ReversalBody: {
+            document_id: string;
+            reason: string;
+        };
+        /**
+         * ReverseIssueBody
+         * @description POST `/api/v1/inventory/reversals` response: a document plus reversal fields.
+         */
+        ReverseIssueBody: {
+            /** @description Id. */
+            id: string;
+            /** @description Kind. */
+            kind: string;
+            /** @description Lines. */
+            lines: components["schemas"]["LineBody"][];
+            /** @description Ledger group produced by posting. */
+            posted_group_id?: string | null;
+            reason: string;
+            /** @description PO / WO / order reference. */
+            reference?: string | null;
+            reversal_group_id: string;
+            /** @description Status. */
+            status: string;
+            /**
+             * Format: int64
+             * @description Version.
+             */
+            version: number;
+        };
+        /**
+         * RevisionCreate
+         * @description POST `/api/v1/documents/{id}/revisions` body. `id` is rejected with 400 if present. Omitted or null `content` is stored as `{}`.
+         */
+        RevisionCreate: {
+            /** @default null */
+            content: unknown;
+            /** @default null */
+            id: string | null;
+            label: string;
         };
         /**
          * RoleBody
@@ -1339,6 +2178,25 @@ export interface components {
             id: string;
             name: string;
             permissions: string[];
+        };
+        /** @description One seal in an archival bundle. */
+        SealRef: {
+            /** @description Seal hash bytes. The audit export stores hex; the bundle decodes it and serde emits a JSON array of integers. */
+            hash: number[];
+            /** @description Previous seal hash, same encoding as [`Self::hash`]. JSON null when absent. */
+            prev_hash?: number[] | null;
+            /**
+             * Format: date-time
+             * @description Sealed at.
+             */
+            sealed_at: string;
+            /**
+             * Format: int64
+             * @description Gap-free sequence.
+             */
+            seq: number;
+            /** @description Transaction id as text. */
+            xid: string;
         };
         /**
          * SerialBody
@@ -1364,6 +2222,104 @@ export interface components {
             /**
              * Format: int64
              * @description Version.
+             */
+            version: number;
+        };
+        /**
+         * SetBody
+         * @description PUT `/api/v1/items/{id}/custom-fields` body.
+         */
+        SetBody: {
+            fields: components["schemas"]["FieldWrite"][];
+        };
+        /**
+         * SetStatusBody
+         * @description POST `/api/v1/lots/{id}/status` body.
+         */
+        SetStatusBody: {
+            /** @description Reason (required). */
+            reason: string;
+            /** @description New status. */
+            status: components["schemas"]["LotStatus"];
+        };
+        /** @description Wire shape of interpolated [`SignatureEdge`] (externally tagged; inner keys sorted). */
+        SignatureEdgeBody: {
+            Required: {
+                /** @description Edge name. */
+                edge: string;
+                /** @description Meaning. */
+                meaning: string;
+                /** @description Module / document type. */
+                module: string;
+                /** @description Permission key. */
+                permission: string;
+            };
+        } | {
+            NotRequired: {
+                /** @description Edge name. */
+                edge: string;
+                /** @description Module / document type. */
+                module: string;
+                /** @description Reason. */
+                reason: string;
+            };
+        };
+        /** @description D-2b-2 manifestation object (the inner `signature` member). */
+        SignatureManifest: {
+            /** @description Components used. */
+            components_used: string[];
+            /** @description Credential kind. */
+            credential_kind: string;
+            /** @description Signature id. */
+            id: string;
+            /** @description Meaning snapshot. */
+            meaning: string;
+            /** @description Printed name snapshot. */
+            printed_name: string;
+            /** @description Reason snapshot. */
+            reason?: string | null;
+            /** @description Record reference including `doc_type`. */
+            record: components["schemas"]["ManifestRecord"];
+            /** @description Hex SHA-256. */
+            record_content_hash: string;
+            /** @description UTC instant (`…Z`). */
+            signed_at: string;
+            /** @description Derived local stamp with offset. */
+            signed_at_local: string;
+            /** @description Signer's IANA zone. */
+            signed_at_zone: string;
+            /** @description Signer principal id. */
+            signer_id: string;
+            /** @description True when the live `sm.instance.version` is greater than `record.version`. */
+            superseded: boolean;
+            /**
+             * Format: int64
+             * @description Live instance version when [`Self::superseded`]; otherwise `null`.
+             * @default null
+             */
+            superseded_by_version: number | null;
+        };
+        /**
+         * SigningSecretBody
+         * @description POST `/api/v1/identity/me/signing-credential` body.
+         */
+        SigningSecretBody: {
+            secret: string;
+        };
+        /**
+         * TemplateSummary
+         * @description Latest effective template row (list seam; no body).
+         */
+        TemplateSummary: {
+            /** @description SHA-256 of the template body, lowercase hex. */
+            body_hash: string;
+            /** @description Semantic version stamped on that row. */
+            semantic_version: string;
+            /** @description Template id (`document_revision`, `generic_record`, `work_order_traveler`). */
+            template_id: string;
+            /**
+             * Format: int32
+             * @description Integer version of the latest effective row.
              */
             version: number;
         };
@@ -1432,6 +2388,107 @@ export interface components {
          * @description Opaque catalog identifier. Core never interprets the catalog.
          */
         UnitId: number;
+        /**
+         * ValidationManifestBody
+         * @description GET `/api/v1/iq/manifest` body.
+         *
+         *     This is the live `json!` blob, not [`wicket_module::ConfigurationManifest`]: the handler omits `app_version`. Field order is alphabetical so `Json(self)` matches `serde_json::json!` (`Map` is `BTreeMap` without `preserve_order`).
+         */
+        ValidationManifestBody: {
+            content_hash: string;
+            kernel_order: string[];
+            modules: components["schemas"]["ManifestModuleBody"][];
+            profile_id: string;
+            signature_edges: components["schemas"]["SignatureEdgeBody"][];
+            spec_version: string;
+        };
+        /**
+         * ValueWire
+         * @description Wire shape for a stored value (`docs/10`).
+         *
+         *     [`Self::type_name`] is [`FieldType::as_str`] (`"string"`), not the enum's serde name (`"String"`). [`Self::value`] is the handler `value_payload` JSON, not [`Value`]'s externally tagged serde.
+         */
+        ValueWire: {
+            /**
+             * Format: int32
+             * @description Definition version at write time.
+             */
+            definition_version: number;
+            /** @description Field key. */
+            key: string;
+            /**
+             * @description Type token from [`FieldType::as_str`].
+             * @enum {string}
+             */
+            type: "string" | "text" | "integer" | "decimal" | "bool" | "date" | "enum" | "reference";
+            /** @description Payload for [`Self::type_name`], or null when the definition is unset. */
+            value: null | string | number | boolean | {
+                scale: number;
+                value: string;
+            } | {
+                /** @enum {string} */
+                precision: "day" | "month" | "year";
+                /** Format: date */
+                value: string;
+            } | {
+                entity: string;
+                /** Format: uuid */
+                id: string;
+            };
+        };
+        /** WoCreate */
+        WoCreate: {
+            /** @default null */
+            id: string | null;
+            item_id: string;
+            quantity: components["schemas"]["AnyQuantity"];
+            revision: string;
+        };
+        /**
+         * WorkOrderCompleteJson
+         * @description Wire body `complete_wo` emits today. Not `wicket_mod_production_min::api::CompletionBody`.
+         */
+        WorkOrderCompleteJson: {
+            application_version: string;
+            configuration_version: string;
+            finished_lot: components["schemas"]["FinishedLotRef"];
+            group_id: string;
+            id: string;
+            number?: string | null;
+            posted_at?: string | null;
+            quantity: components["schemas"]["AnyQuantity"];
+            status: string;
+            /** Format: int64 */
+            version: number;
+        };
+        /** @description Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here). */
+        WorkOrderIssueLine: {
+            amount?: components["schemas"]["MoneyBody"] | null;
+            entered?: components["schemas"]["AnyQuantity"] | null;
+            item_id: string;
+            lot_id?: string | null;
+            package_id?: string | null;
+            quantity?: components["schemas"]["AnyQuantity"] | null;
+        };
+        /**
+         * WorkOrderJson
+         * @description Wire body `wo_json` emits today. Not `wicket_mod_production_min::api::WorkOrderBody`.
+         */
+        WorkOrderJson: {
+            application_version: string;
+            completed_at?: string | null;
+            configuration_version: string;
+            id: string;
+            item_id: string;
+            number?: string | null;
+            quantity: components["schemas"]["AnyQuantity"];
+            released_at?: string | null;
+            revision: string;
+            status: string;
+            /** Format: int64 */
+            version: number;
+            wip_location_id?: string | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1455,7 +2512,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AuditExportBody"];
+                };
             };
             /** @description created */
             201: {
@@ -1520,7 +2579,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["CalibrationApprovedBody"];
+                };
             };
             /** @description created */
             201: {
@@ -1582,7 +2643,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_Definition"];
+                };
             };
             /** @description created */
             201: {
@@ -1637,14 +2700,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DefineBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DefineResponse"];
+                };
             };
             /** @description created */
             201: {
@@ -1709,7 +2778,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RetireResponse"];
+                };
             };
             /** @description created */
             201: {
@@ -1764,14 +2835,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DocumentCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlledDocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -1833,7 +2910,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlledDocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -1898,7 +2977,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlledDocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -1955,14 +3036,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentRevisionBody"];
+                };
             };
             /** @description created */
             201: {
@@ -2027,7 +3114,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ControlledDocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -2087,7 +3176,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Challenge"];
+                };
             };
             /** @description created */
             201: {
@@ -2142,14 +3233,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EsignMintBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Manifestation"];
+                };
             };
             /** @description created */
             201: {
@@ -2211,7 +3308,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Manifestation"];
+                };
             };
             /** @description created */
             201: {
@@ -2273,7 +3372,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ArchivalBundle"];
+                };
             };
             /** @description created */
             201: {
@@ -2713,14 +3814,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NoContentJson"];
+                };
             };
             /** @description created */
             201: {
@@ -2775,14 +3882,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SigningSecretBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NoContentJson"];
+                };
             };
             /** @description created */
             201: {
@@ -2902,14 +4015,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePrincipalBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PrincipalBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3035,7 +4154,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PrincipalBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3092,14 +4213,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmptyBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NoContentJson"];
+                };
             };
             /** @description created */
             201: {
@@ -3156,14 +4283,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NoContentJson"];
+                };
             };
             /** @description created */
             201: {
@@ -3220,14 +4353,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["NoContentJson"];
+                };
             };
             /** @description created */
             201: {
@@ -3475,14 +4614,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CountBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3603,14 +4748,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReceiptBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3666,14 +4817,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseInvBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["DocumentBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3728,14 +4885,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReversalBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ReverseIssueBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3795,7 +4958,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationManifestBody"];
+                };
             };
             /** @description created */
             201: {
@@ -3918,14 +5083,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ItemBody"];
+                };
             };
             /** @description created */
             201: {
@@ -4186,7 +5357,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_ValueWire"];
+                };
             };
             /** @description created */
             201: {
@@ -4243,14 +5416,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_ValueWire"];
+                };
             };
             /** @description created */
             201: {
@@ -4315,7 +5494,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ItemBody"];
+                };
             };
             /** @description created */
             201: {
@@ -4378,7 +5559,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListResponse_for_Location"];
+                };
             };
             /** @description created */
             201: {
@@ -4433,14 +5616,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LocationSummary"];
+                };
             };
             /** @description created */
             201: {
@@ -4502,7 +5691,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListResponse_for_LocationTreeNode"];
+                };
             };
             /** @description created */
             201: {
@@ -4564,7 +5755,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LocationSummary"];
+                };
             };
             /** @description created */
             201: {
@@ -4629,7 +5822,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Location"];
+                };
             };
             /** @description created */
             201: {
@@ -4692,7 +5887,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_LotBody"];
+                };
             };
             /** @description created */
             201: {
@@ -4747,14 +5944,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLotBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LotBody"];
+                };
             };
             /** @description created */
             201: {
@@ -4880,7 +6083,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_PackageListItem"];
+                };
             };
             /** @description created */
             201: {
@@ -4937,14 +6142,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PackageCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["PackageCreatedBody"];
+                };
             };
             /** @description created */
             201: {
@@ -5065,14 +6276,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSerialsBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_SerialBody"];
+                };
             };
             /** @description created */
             201: {
@@ -5130,14 +6347,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetStatusBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LotBody"];
+                };
             };
             /** @description created */
             201: {
@@ -5259,7 +6482,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["OpenApiDocument"];
+                };
             };
             /** @description created */
             201: {
@@ -5314,14 +6539,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ArchiveBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ArchivePrintResponse"];
+                };
             };
             /** @description created */
             201: {
@@ -5376,14 +6607,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenderBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["RenderPrintResponse"];
+                };
             };
             /** @description created */
             201: {
@@ -5443,7 +6680,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_TemplateSummary"];
+                };
             };
             /** @description created */
             201: {
@@ -5507,7 +6746,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ListBody_for_WorkOrderJson"];
+                };
             };
             /** @description created */
             201: {
@@ -5562,14 +6803,20 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WoCreate"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderJson"];
+                };
             };
             /** @description created */
             201: {
@@ -5695,7 +6942,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderJson"];
+                };
             };
             /** @description created */
             201: {
@@ -5753,14 +7002,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderCompleteJson"];
+                };
             };
             /** @description created */
             201: {
@@ -5818,14 +7073,20 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueBody"];
+            };
+        };
         responses: {
             /** @description ok */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderJson"];
+                };
             };
             /** @description created */
             201: {
@@ -5890,7 +7151,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["WorkOrderJson"];
+                };
             };
             /** @description created */
             201: {

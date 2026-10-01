@@ -1,5 +1,8 @@
-import type { ItemBodyWire } from "./types/items";
+import type { components } from "./generated/openapi";
 import type { ItemMasterView } from "./view-models";
+
+export type ItemBodyWire = components["schemas"]["ItemBody"];
+export type ItemPatchWire = components["schemas"]["ItemPatch"];
 
 const STOCK_UOM_LABELS: Record<number, string> = {
   1: "EA",
@@ -39,7 +42,7 @@ export function mapItemBody(body: ItemBodyWire): ItemMasterView {
   };
 }
 
-export function parseItemBody(payload: unknown): ItemMasterView {
+export function parseItemBody(payload: object): ItemMasterView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("Item response was not an object.");
   }

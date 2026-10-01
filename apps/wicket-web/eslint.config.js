@@ -7,11 +7,11 @@ import tseslint from "typescript-eslint";
 const httpBelongsInClient =
   "HTTP belongs in src/api/client.ts. A component that fetches bypasses the T-35 swap point.";
 
-const typesMustNotLeak =
-  "Throwaway API types in src/api/types/ must not leak into components. Map to a view-model inside src/api/.";
+const generatedMustNotLeak =
+  "Generated OpenAPI types in src/api/generated/ stay inside src/api/. A component imports client.ts and view-models.";
 
 const clientMustNotReexport =
-  "client.ts must not re-export throwaway types from src/api/types/. Re-exporting launders the leak through an allowed module.";
+  "client.ts must not re-export the generated module. Re-exporting launders the wire types through an allowed module.";
 
 export default tseslint.config(
   { ignores: ["dist", "node_modules"] },
@@ -58,14 +58,14 @@ export default tseslint.config(
           patterns: [
             {
               group: [
-                "**/api/types",
-                "**/api/types/*",
-                "**/api/types/**",
-                "@/api/types",
-                "@/api/types/*",
-                "@/api/types/**",
+                "**/api/generated",
+                "**/api/generated/*",
+                "**/api/generated/**",
+                "@/api/generated",
+                "@/api/generated/*",
+                "@/api/generated/**",
               ],
-              message: typesMustNotLeak,
+              message: generatedMustNotLeak,
             },
           ],
         },
@@ -123,12 +123,12 @@ export default tseslint.config(
         "error",
         {
           selector:
-            "ExportNamedDeclaration[source.value=/types/]",
+            "ExportNamedDeclaration[source.value=/generated/]",
           message: clientMustNotReexport,
         },
         {
           selector:
-            "ExportAllDeclaration[source.value=/types/]",
+            "ExportAllDeclaration[source.value=/generated/]",
           message: clientMustNotReexport,
         },
       ],

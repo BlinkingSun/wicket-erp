@@ -1,9 +1,9 @@
-import type {
-  LoginBodyWire,
-  NavigationBodyWire,
-  OwnProfileBodyWire,
-} from "./types/identity";
+import type { components } from "./generated/openapi";
 import type { OwnProfileView } from "./view-models";
+
+export type OwnProfileBodyWire = components["schemas"]["PrincipalBody"];
+export type LoginBodyWire = components["schemas"]["LoginResponse"];
+export type NavigationBodyWire = components["schemas"]["NavigationBody"];
 
 export type LoginView = {
   sessionId: string;
@@ -25,7 +25,7 @@ export function mapOwnProfileBody(body: OwnProfileBodyWire): OwnProfileView {
   };
 }
 
-export function parseOwnProfileBody(payload: unknown): OwnProfileView {
+export function parseOwnProfileBody(payload: object): OwnProfileView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("Profile response was not an object.");
   }
@@ -49,7 +49,7 @@ export function mapLoginBody(body: LoginBodyWire): LoginView {
   };
 }
 
-export function parseLoginBody(payload: unknown): LoginView {
+export function parseLoginBody(payload: object): LoginView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("Login response was not an object.");
   }
@@ -74,7 +74,7 @@ export function mapNavigationBody(body: NavigationBodyWire): NavigationView {
   };
 }
 
-export function parseNavigationBody(payload: unknown): NavigationView {
+export function parseNavigationBody(payload: object): NavigationView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("Navigation response was not an object.");
   }

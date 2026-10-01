@@ -1,8 +1,14 @@
 // Lane c-gen: getGenealogyJob, listLots land here.
 
 import { getJson } from "../http";
+import { jsonObject } from "./object";
 import { mapTraceResponse } from "../map-trace";
+import type { components } from "../generated/openapi";
 import type { GenealogyResultView, TraceQueryDirection } from "../view-models";
+
+type JobStatusWire = components["schemas"]["JobStatus"];
+type LotListWire = components["schemas"]["ListBody_for_LotBody"];
+type LotBodyWire = components["schemas"]["LotBody"];
 
 export async function traceGenealogy(args: {
   fromLotId: string;
@@ -12,7 +18,10 @@ export async function traceGenealogy(args: {
     from_lot_id: args.fromLotId,
     direction: args.direction,
   });
-  const payload = await getJson(`/api/v1/genealogy/trace?${params.toString()}`);
+  const payload = jsonObject(
+    await getJson(`/api/v1/genealogy/trace?${params.toString()}`),
+    "Genealogy trace response was not an object.",
+  );
   return mapTraceResponse(payload);
 }
 
@@ -50,17 +59,15 @@ export type LotListPageView = {
   hasMore: boolean;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+function isRecord(value: object | null): value is JobStatusWire | LotListWire | LotBodyWire {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function isJobState(value: unknown): value is GenealogyJobState {
-  return (
-    typeof value === "string" && (JOB_STATES as readonly string[]).includes(value)
-  );
+function isJobState(value: string): value is GenealogyJobState {
+  return (JOB_STATES as readonly string[]).includes(value);
 }
 
-function nullableString(raw: unknown, field: string): string | null {
+function nullableString(raw: string | null | undefined, field: string): string | null {
   if (raw === null || raw === undefined) {
     return null;
   }
@@ -70,83 +77,88 @@ function nullableString(raw: unknown, field: string): string | null {
   throw new Error(`Genealogy job had invalid ${field}.`);
 }
 
-export function mapGenealogyJobStatus(data: unknown): GenealogyJobStatusView {
+export function mapGenealogyJobStatus(data: object): GenealogyJobStatusView {
   if (!isRecord(data)) {
     throw new Error("Genealogy job response was not an object.");
   }
-  if (typeof data.id !== "string") {
+  const body = data as JobStatusWire;
+  if (typeof body.id !== "string") {
     throw new Error("Genealogy job response was missing id.");
   }
-  if (typeof data.kind !== "string") {
+  if (typeof body.kind !== "string") {
     throw new Error("Genealogy job response was missing kind.");
   }
-  if (!isJobState(data.state)) {
+  if (typeof body.state !== "string" || !isJobState(body.state)) {
     throw new Error("Genealogy job response was missing state.");
   }
-  if (typeof data.progress_pct !== "number") {
+  if (typeof body.progress_pct !== "number") {
     throw new Error("Genealogy job response was missing progress_pct.");
   }
   let result: GenealogyResultView | null = null;
-  if (data.result !== null && data.result !== undefined) {
-    result = mapTraceResponse(data.result);
+  if (body.result !== null && body.result !== undefined) {
+    if (typeof body.result !== "object") {
+      throw new Error("Genealogy job result was not an object.");
+    }
+    result = mapTraceResponse(body.result);
   }
   return {
-    id: data.id,
-    kind: data.kind,
-    state: data.state,
-    progressPct: data.progress_pct,
-    progressNote: nullableString(data.progress_note, "progress_note"),
+    id: body.id,
+    kind: body.kind,
+    state: body.state,
+    progressPct: body.progress_pct,
+    progressNote: nullableString(body.progress_note, "progress_note"),
     result,
-    lastError: nullableString(data.last_error, "last_error"),
+    lastError: nullableString(body.last_error, "last_error"),
   };
 }
 
 export async function getGenealogyJob(
   resultUrl: string,
 ): Promise<GenealogyJobStatusView> {
-  const payload = await getJson(resultUrl);
+  const payload = jsonObject(await getJson(resultUrl), "Genealogy job response was not an object.");
   return mapGenealogyJobStatus(payload);
 }
 
-function mapLotListItem(raw: unknown): LotListItemView {
-  if (!isRecord(raw)) {
-    throw new Error("Lot list item was not an object.");
-  }
-  if (typeof raw.id !== "string") {
+function mapLotListItem(raw: object): LotListItemView {
+  const body = raw as LotBodyWire;
+  if (typeof body.id !== "string") {
     throw new Error("Lot list item was missing id.");
   }
-  if (typeof raw.identifier !== "string") {
+  if (typeof body.identifier !== "string") {
     throw new Error("Lot list item was missing identifier.");
   }
-  if (typeof raw.item_id !== "string") {
+  if (typeof body.item_id !== "string") {
     throw new Error("Lot list item was missing item_id.");
   }
-  if (typeof raw.status !== "string") {
+  if (typeof body.status !== "string") {
     throw new Error("Lot list item was missing status.");
   }
   return {
-    id: raw.id,
-    identifier: raw.identifier,
-    itemId: raw.item_id,
-    status: raw.status,
-    supplierLot: nullableString(raw.supplier_lot, "supplier_lot"),
+    id: body.id,
+    identifier: body.identifier,
+    itemId: body.item_id,
+    status: body.status,
+    supplierLot: nullableString(body.supplier_lot, "supplier_lot"),
   };
 }
 
-export function mapLotListPage(data: unknown): LotListPageView {
-  if (!isRecord(data)) {
-    throw new Error("Lot list response was not an object.");
-  }
-  if (!Array.isArray(data.data)) {
+export function mapLotListPage(data: object): LotListPageView {
+  const body = data as LotListWire;
+  if (!Array.isArray(body.data)) {
     throw new Error("Lot list response was missing data.");
   }
-  if (typeof data.has_more !== "boolean") {
+  if (typeof body.has_more !== "boolean") {
     throw new Error("Lot list response was missing has_more.");
   }
   return {
-    lots: data.data.map(mapLotListItem),
-    nextCursor: nullableString(data.next_cursor, "next_cursor"),
-    hasMore: data.has_more,
+    lots: body.data.map((entry) => {
+      if (entry === null || typeof entry !== "object") {
+        throw new Error("Lot list item was not an object.");
+      }
+      return mapLotListItem(entry);
+    }),
+    nextCursor: nullableString(body.next_cursor, "next_cursor"),
+    hasMore: body.has_more,
   };
 }
 
@@ -158,6 +170,9 @@ export async function listLots(args: {
   if (args.cursor) {
     params.set("cursor", args.cursor);
   }
-  const payload = await getJson(`/api/v1/lots?${params.toString()}`);
+  const payload = jsonObject(
+    await getJson(`/api/v1/lots?${params.toString()}`),
+    "Lot list response was not an object.",
+  );
   return mapLotListPage(payload);
 }

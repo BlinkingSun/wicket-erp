@@ -1,3 +1,4 @@
+import type { components } from "./generated/openapi";
 import type {
   GenealogyBothTraceView,
   GenealogyDirectionTraceView,
@@ -6,11 +7,34 @@ import type {
   TraceTreeNodeView,
 } from "./view-models";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+export type TraceQuantityWire = components["schemas"]["AnyQuantity"];
+export type TraceNodeWire = components["schemas"]["TreeNode"];
+export type TraceTreeWire = components["schemas"]["Tree"];
+export type TraceBodyWire = components["schemas"]["TraceBody"];
+export type TraceJobWire = components["schemas"]["AcceptedBody"];
+export type TraceResponseWire = TraceBodyWire | TraceJobWire;
+
+type Loose = {
+  [key: string]: Loose | string | number | boolean | null | undefined;
+};
+
+function isRecord(
+  value: object | string | number | boolean | null | undefined,
+): value is Loose {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function mapQuantity(raw: unknown, field: string): TraceQuantityView {
+function requireRecord(
+  value: Loose | string | number | boolean | null | undefined,
+  field: string,
+): Loose {
+  if (!isRecord(value)) {
+    throw new Error(`Genealogy trace was missing ${field}.`);
+  }
+  return value;
+}
+
+function mapQuantity(raw: object | null, field: string): TraceQuantityView {
   if (!isRecord(raw)) {
     throw new Error(`Genealogy trace node was missing ${field}.`);
   }
@@ -23,7 +47,7 @@ function mapQuantity(raw: unknown, field: string): TraceQuantityView {
   return { amount, dimension, unit };
 }
 
-function nullableString(raw: unknown, field: string): string | null {
+function nullableString(raw: Loose | string | number | boolean | null | undefined, field: string): string | null {
   if (raw === null) {
     return null;
   }
@@ -33,7 +57,7 @@ function nullableString(raw: unknown, field: string): string | null {
   throw new Error(`Genealogy trace node had invalid ${field}.`);
 }
 
-function mapTreeNode(raw: unknown): TraceTreeNodeView {
+function mapTreeNode(raw: object | null): TraceTreeNodeView {
   if (!isRecord(raw) || typeof raw.lot !== "string") {
     throw new Error("Genealogy trace node was missing lot.");
   }
@@ -63,15 +87,15 @@ function mapTreeNode(raw: unknown): TraceTreeNodeView {
     locationId: nullableString(raw.location, "location"),
     posting,
     occurredAt: nullableString(raw.occurred_at, "occurred_at"),
-    quantity: mapQuantity(raw.quantity, "quantity"),
-    edgeQuantity: mapQuantity(raw.edge_quantity, "edge_quantity"),
+    quantity: mapQuantity(requireRecord(raw.quantity, "quantity"), "quantity"),
+    edgeQuantity: mapQuantity(requireRecord(raw.edge_quantity, "edge_quantity"), "edge_quantity"),
     amount,
     amountCurrency,
     children,
   };
 }
 
-function mapDirectionBranch(raw: unknown): GenealogyDirectionTraceView {
+function mapDirectionBranch(raw: object | null): GenealogyDirectionTraceView {
   if (!isRecord(raw)) {
     throw new Error("Genealogy trace branch was not an object.");
   }
@@ -89,7 +113,7 @@ function mapDirectionBranch(raw: unknown): GenealogyDirectionTraceView {
   };
 }
 
-export function mapTraceResponse(data: unknown): GenealogyResultView {
+export function mapTraceResponse(data: object): GenealogyResultView {
   if (!isRecord(data)) {
     throw new Error("Genealogy trace response was not an object.");
   }
@@ -106,8 +130,8 @@ export function mapTraceResponse(data: unknown): GenealogyResultView {
   if ("backward" in data && "forward" in data) {
     const both: GenealogyBothTraceView = {
       kind: "both",
-      backward: mapDirectionBranch(data.backward),
-      forward: mapDirectionBranch(data.forward),
+      backward: mapDirectionBranch(requireRecord(data.backward, "backward")),
+      forward: mapDirectionBranch(requireRecord(data.forward, "forward")),
     };
     return both;
   }

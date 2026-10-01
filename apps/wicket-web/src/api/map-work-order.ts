@@ -1,5 +1,8 @@
-import type { QuantityBodyWire, WorkOrderBodyWire } from "./types/work-orders";
+import type { components } from "./generated/openapi";
 import type { WorkOrderView } from "./view-models";
+
+type QuantityBodyWire = components["schemas"]["AnyQuantity"];
+export type WorkOrderBodyWire = components["schemas"]["WorkOrderJson"];
 
 function formatAmount(amount: string): string {
   return amount.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
@@ -15,7 +18,7 @@ function titleCaseStatus(status: string): string {
     .join(" ");
 }
 
-function isQuantityBody(value: unknown): value is QuantityBodyWire {
+function isQuantityBody(value: object | null): value is QuantityBodyWire {
   if (value === null || typeof value !== "object") {
     return false;
   }
@@ -30,19 +33,19 @@ function isQuantityBody(value: unknown): value is QuantityBodyWire {
 export function mapWorkOrderBody(body: WorkOrderBodyWire): WorkOrderView {
   return {
     id: body.id,
-    number: body.number,
+    number: body.number ?? null,
     itemId: body.item_id,
     quantityAmount: formatAmount(body.quantity.amount),
     quantityDimension: body.quantity.dimension,
     status: body.status,
     statusLabel: titleCaseStatus(body.status),
     revision: body.revision,
-    wipLocationId: body.wip_location_id,
+    wipLocationId: body.wip_location_id ?? null,
     version: body.version,
   };
 }
 
-export function parseWorkOrderBody(payload: unknown): WorkOrderView {
+export function parseWorkOrderBody(payload: object): WorkOrderView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("Work order response was not an object.");
   }
