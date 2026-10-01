@@ -50,7 +50,7 @@ fn parse_cost_method(raw: &str) -> Result<CostMethod> {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ItemCreate {
     number: String,
     revision: String,
