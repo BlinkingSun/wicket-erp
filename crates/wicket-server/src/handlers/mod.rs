@@ -6,7 +6,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use uuid::Uuid;
 use wicket_core::{
     Identifier, ItemId, LotId, RecordRef, SignatureError, SignatureId, SignatureMeaning,
@@ -341,36 +341,13 @@ async fn approve_cal_inner(
         .kernel()
         .transition(&mut tx, &doc, "approve", token.as_ref(), &ctx)
         .await?;
-    let body = json!({"id": doc_id.to_string(), "status": "approved"});
+    let body = serde_json::to_value(esign::CalibrationApprovedBody {
+        id: doc_id.to_string(),
+        status: "approved".into(),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &body).await?;
     tx.commit().await?;
     Ok((200, body))
-}
-
-#[derive(Deserialize)]
-struct EsignMintBody {
-    meaning: String,
-    #[serde(default)]
-    reason: Option<String>,
-    record: EsignRecordBody,
-    identification: EsignIdentBody,
-    #[serde(default)]
-    doc_type: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct EsignRecordBody {
-    table: String,
-    id: String,
-    version: i64,
-}
-
-#[derive(Deserialize)]
-struct EsignIdentBody {
-    #[serde(default)]
-    code: Option<String>,
-    #[serde(default)]
-    secret: Option<String>,
 }
 
 /// Permission keys to snapshot at mint, from the target record's Required
@@ -447,7 +424,7 @@ async fn esign_mint_inner(
     let session = extract::require_mutation(state, headers, request_id, "identity.session").await?;
     let key = idempotency::require_key(headers)?;
     let hash = idempotency::body_hash(raw);
-    let body: EsignMintBody = parse_json(raw)?;
+    let body: esign::EsignMintBody = parse_json(raw)?;
     let write = fresh_write(state).await?;
     let ctx = session::write_context(
         &session,

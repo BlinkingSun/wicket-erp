@@ -1,6 +1,7 @@
 //! Continuous-session relaxation (D-2b-3). Shipped `off` in both profiles.
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use sqlx::{query as sql_query, query_as as sql_query_as};
 use uuid::Uuid;
@@ -208,7 +209,7 @@ pub(crate) fn device_changed(
 }
 
 /// Wire shape for `POST /esign/challenges`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Challenge {
     /// Components the client must present.
     pub components_required: Vec<String>,
@@ -240,4 +241,48 @@ pub async fn challenge(
         signing_session_expires_at: expires,
         credential_kind: "signing_password".into(),
     })
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn challenge_two_component_wire_is_frozen() {
+        let challenge = Challenge {
+            components_required: vec!["code".into(), "secret".into()],
+            signing_session_expires_at: None,
+            credential_kind: "signing_password".into(),
+        };
+        let named = serde_json::to_value(&challenge).expect("json");
+        assert_eq!(
+            named,
+            json!({
+                "components_required": ["code", "secret"],
+                "signing_session_expires_at": null,
+                "credential_kind": "signing_password",
+            })
+        );
+    }
+
+    #[test]
+    fn challenge_expiry_is_rfc3339_when_present() {
+        use chrono::TimeZone;
+        let exp = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let challenge = Challenge {
+            components_required: vec!["secret".into()],
+            signing_session_expires_at: Some(exp),
+            credential_kind: "signing_password".into(),
+        };
+        let named = serde_json::to_value(&challenge).expect("json");
+        assert_eq!(
+            named,
+            json!({
+                "components_required": ["secret"],
+                "signing_session_expires_at": "2026-01-01T00:00:00Z",
+                "credential_kind": "signing_password",
+            })
+        );
+    }
 }

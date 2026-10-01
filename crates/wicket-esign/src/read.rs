@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::query_as as sql_query_as;
@@ -15,7 +16,7 @@ use crate::hash::{canonical_bytes, content_hash, hex};
 use crate::{Error, Result};
 
 /// D-2b-2 manifestation object (the inner `signature` member).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct SignatureManifest {
     /// Signature id.
     pub id: String,
@@ -49,7 +50,7 @@ pub struct SignatureManifest {
 }
 
 /// Record object inside the manifestation.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct ManifestRecord {
     /// Table name.
     pub table: String,
@@ -62,7 +63,7 @@ pub struct ManifestRecord {
 }
 
 /// Exact wire shape: `{ "signature": { … } }`.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct Manifestation {
     /// Signature manifestation.
     pub signature: SignatureManifest,
@@ -280,22 +281,30 @@ pub async fn manifestation_for_record_on(
 }
 
 /// One seal in an archival bundle.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct SealRef {
     /// Gap-free sequence.
     pub seq: i64,
     /// Transaction id as text.
     pub xid: String,
-    /// Seal hash.
+    /// Seal hash bytes. The audit export stores hex; the bundle decodes it
+    /// and serde emits a JSON array of integers.
     pub hash: Vec<u8>,
-    /// Previous hash.
+    /// Previous seal hash, same encoding as [`Self::hash`]. JSON null when absent.
     pub prev_hash: Option<Vec<u8>>,
     /// Sealed at.
     pub sealed_at: DateTime<Utc>,
 }
 
+/// Unconstrained JSON. `JsonSchema for serde_json::Value` is the boolean
+/// schema `true`, which OpenAPI 3.0 does not allow. An empty schema object
+/// is that same "any instance" contract in this document's dialect.
+fn any_json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    schemars::schema::SchemaObject::default().into()
+}
+
 /// Off-box anchor, if any.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, JsonSchema)]
 pub struct AnchorRef {
     /// Sink name.
     pub sink: String,
@@ -304,13 +313,15 @@ pub struct AnchorRef {
 }
 
 /// Archival bundle (D-2b-8).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ArchivalBundle {
     /// Manifestation.
     pub manifestation: Manifestation,
-    /// Canonical snapshot that was hashed.
+    /// Canonical snapshot that was hashed. Any JSON value.
+    #[schemars(schema_with = "any_json_schema")]
     pub record_snapshot: Value,
-    /// Content hash.
+    /// SHA-256 of that snapshot. On the wire this is a JSON array of 32
+    /// integers, not the hex string on [`SignatureManifest::record_content_hash`].
     pub record_content_hash: [u8; 32],
     /// Audit event ids covering this signature (row-change + `esign_id` link).
     pub audit_event_ids: Vec<Uuid>,
@@ -527,5 +538,137 @@ fn nibble(c: u8) -> Option<u8> {
         b'a'..=b'f' => Some(c - b'a' + 10),
         b'A'..=b'F' => Some(c - b'A' + 10),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use chrono::TimeZone;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    fn sample_manifestation() -> Manifestation {
+        Manifestation {
+            signature: SignatureManifest {
+                id: "00000000-0000-0000-0000-000000000001".into(),
+                signer_id: "00000000-0000-0000-0000-000000000002".into(),
+                printed_name: "M. Reyes".into(),
+                meaning: "Approved".into(),
+                reason: None,
+                signed_at: "2026-01-01T00:00:00Z".into(),
+                signed_at_zone: "America/New_York".into(),
+                signed_at_local: "2025-12-31T19:00:00-05:00".into(),
+                record: ManifestRecord {
+                    table: "sm.instance".into(),
+                    doc_type: "calibration.certificate".into(),
+                    id: "00000000-0000-0000-0000-000000000003".into(),
+                    version: 1,
+                },
+                record_content_hash: "ab".repeat(32),
+                credential_kind: "signing_password".into(),
+                components_used: vec!["code".into(), "secret".into()],
+                superseded: false,
+                superseded_by_version: None,
+            },
+        }
+    }
+
+    #[test]
+    fn manifestation_wire_is_frozen() {
+        let named = serde_json::to_value(sample_manifestation()).expect("json");
+        assert_eq!(
+            named,
+            json!({
+                "signature": {
+                    "id": "00000000-0000-0000-0000-000000000001",
+                    "signer_id": "00000000-0000-0000-0000-000000000002",
+                    "printed_name": "M. Reyes",
+                    "meaning": "Approved",
+                    "reason": null,
+                    "signed_at": "2026-01-01T00:00:00Z",
+                    "signed_at_zone": "America/New_York",
+                    "signed_at_local": "2025-12-31T19:00:00-05:00",
+                    "record": {
+                        "table": "sm.instance",
+                        "doc_type": "calibration.certificate",
+                        "id": "00000000-0000-0000-0000-000000000003",
+                        "version": 1
+                    },
+                    "record_content_hash": "abababababababababababababababababababababababababababababababab",
+                    "credential_kind": "signing_password",
+                    "components_used": ["code", "secret"],
+                    "superseded": false,
+                    "superseded_by_version": null
+                }
+            })
+        );
+        assert!(named["signature"]["record_content_hash"].is_string());
+    }
+
+    #[test]
+    fn archival_bundle_hash_is_int_array_not_hex() {
+        let sealed_at = Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let bundle = ArchivalBundle {
+            manifestation: sample_manifestation(),
+            record_snapshot: json!({"k": 1}),
+            record_content_hash: [7u8; 32],
+            audit_event_ids: vec![Uuid::nil()],
+            seals: vec![SealRef {
+                seq: 1,
+                xid: "xid".into(),
+                hash: vec![1, 2, 3],
+                prev_hash: None,
+                sealed_at,
+            }],
+            anchor: Some(AnchorRef {
+                sink: "sink".into(),
+                receipt: None,
+            }),
+        };
+        let named = serde_json::to_value(&bundle).expect("json");
+        let hash = named["record_content_hash"]
+            .as_array()
+            .expect("bundle record_content_hash is an array of ints");
+        assert_eq!(hash.len(), 32);
+        assert!(hash.iter().all(|n| n.as_u64() == Some(7)));
+        assert!(named["seals"][0]["hash"].is_array());
+        assert_eq!(named["seals"][0]["prev_hash"], json!(null));
+        assert_eq!(named["anchor"]["sink"], "sink");
+        assert_eq!(named["anchor"]["receipt"], json!(null));
+    }
+
+    #[test]
+    fn schemas_match_the_two_hash_encodings() {
+        let manifest =
+            serde_json::to_value(schemars::schema_for!(SignatureManifest)).expect("schema");
+        assert_eq!(
+            manifest["properties"]["record_content_hash"]["type"], "string",
+            "manifestation hash is hex text"
+        );
+
+        let bundle = serde_json::to_value(schemars::schema_for!(ArchivalBundle)).expect("schema");
+        let hash = &bundle["properties"]["record_content_hash"];
+        assert_eq!(hash["type"], "array");
+        assert_eq!(hash["minItems"], 32);
+        assert_eq!(hash["maxItems"], 32);
+        assert_eq!(hash["items"]["type"], "integer");
+        let snapshot = &bundle["properties"]["record_snapshot"];
+        assert!(
+            snapshot.is_object(),
+            "record_snapshot must be an OpenAPI schema object, got {snapshot}"
+        );
+        assert!(snapshot.get("type").is_none(), "{snapshot}");
+        assert_ne!(snapshot, &json!(true));
+
+        let seal = &bundle["definitions"]["SealRef"]["properties"];
+        assert_eq!(seal["hash"]["type"], "array", "seal hash is bytes, not hex");
+        let prev = &seal["prev_hash"];
+        assert!(
+            prev["type"]
+                .as_array()
+                .is_some_and(|t| t.iter().any(|x| x == "null")),
+            "prev_hash is nullable bytes, got {prev}"
+        );
     }
 }
