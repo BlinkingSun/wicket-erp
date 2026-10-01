@@ -4,11 +4,12 @@ use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wicket_core::LocationId;
 use wicket_db::Tx;
-use wicket_mod_locations::{CreateLocation, LocationKind};
+use wicket_mod_locations::{CreateLocation, Location, LocationKind};
 
 use super::{H, ListQ, json_status, nonempty, parse_json, parse_limit, rid};
 use crate::boot::AppState;
@@ -51,12 +52,38 @@ pub async fn create_location(State(state): State<AppState>, headers: H, body: By
     }
 }
 
-#[derive(Deserialize)]
+/// POST `/api/v1/locations` body.
+#[derive(Deserialize, JsonSchema)]
 pub struct LocCreate {
     code: String,
     name: String,
     #[serde(default)]
     kind: Option<String>,
+}
+
+/// Wire body for `createLocation` and `getLocation`.
+///
+/// Five fields only. `listLocations` and `deactivateLocation` serialize the
+/// full [`Location`] row instead.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct LocationSummary {
+    id: LocationId,
+    code: String,
+    name: String,
+    kind: LocationKind,
+    version: i64,
+}
+
+impl From<&Location> for LocationSummary {
+    fn from(loc: &Location) -> Self {
+        Self {
+            id: loc.id,
+            code: loc.code.clone(),
+            name: loc.name.clone(),
+            kind: loc.kind,
+            version: loc.version,
+        }
+    }
 }
 
 async fn create_loc_inner(
@@ -106,13 +133,7 @@ async fn create_loc_inner(
         },
     )
     .await?;
-    let body = json!({
-        "id": loc.id.to_string(),
-        "code": loc.code,
-        "name": loc.name,
-        "kind": loc.kind.as_sql(),
-        "version": loc.version,
-    });
+    let body = serde_json::to_value(LocationSummary::from(&loc))?;
     idempotency::remember(&mut tx, key, &hash, 201, &body).await?;
     tx.commit().await?;
     Ok((201, body))
@@ -152,13 +173,7 @@ async fn get_location_inner(
     let loc = wicket_mod_locations::get(&mut tx, loc_id).await;
     tx.rollback().await?;
     let loc = loc?;
-    Ok(json!({
-        "id": loc.id.to_string(),
-        "code": loc.code,
-        "name": loc.name,
-        "kind": loc.kind.as_sql(),
-        "version": loc.version,
-    }))
+    Ok(serde_json::to_value(LocationSummary::from(&loc))?)
 }
 
 pub async fn list_locations(
@@ -296,4 +311,53 @@ async fn deactivate_location_inner(
     idempotency::remember(&mut tx, key, &hash, 200, &body).await?;
     tx.commit().await?;
     Ok((200, body))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use wicket_core::Identifier;
+    use wicket_mod_locations::LocationStatus;
+
+    fn sample_location() -> Location {
+        Location {
+            id: LocationId::from_uuid(uuid::Uuid::nil()),
+            code: "WH-1".into(),
+            name: "Main".into(),
+            site_id: Identifier::from_uuid(uuid::Uuid::nil()),
+            parent_id: None,
+            kind: LocationKind::Warehouse,
+            boundary_class: None,
+            status: LocationStatus::Active,
+            work_order_id: None,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn location_summary_matches_former_json_blob() {
+        let loc = sample_location();
+        let blob = json!({
+            "id": loc.id.to_string(),
+            "code": loc.code,
+            "name": loc.name,
+            "kind": loc.kind.as_sql(),
+            "version": loc.version,
+        });
+        let typed = serde_json::to_value(LocationSummary::from(&loc)).expect("summary json");
+        assert_eq!(blob, typed);
+    }
+
+    #[test]
+    fn create_get_blob_is_not_full_location() {
+        let loc = sample_location();
+        let full = serde_json::to_value(&loc).expect("location json");
+        let summary = serde_json::to_value(LocationSummary::from(&loc)).expect("summary json");
+        assert_ne!(full, summary);
+        assert!(full.get("site_id").is_some());
+        assert!(full.get("status").is_some());
+        assert!(summary.get("site_id").is_none());
+        assert!(summary.get("status").is_none());
+    }
 }

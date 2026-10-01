@@ -1,9 +1,10 @@
 //! Location entities and validation (no I/O).
 
+use schemars::JsonSchema;
 use wicket_core::{Boundary, Identifier, LocationId};
 
 /// Lifecycle status of a location row.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LocationStatus {
     /// Usable for postings.
@@ -32,7 +33,7 @@ impl LocationStatus {
 }
 
 /// Structural kind of a location node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LocationKind {
     /// Top-level warehouse.
@@ -90,7 +91,7 @@ pub struct Site {
 }
 
 /// Location master row.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct Location {
     /// Primary key.
     pub id: LocationId,
@@ -105,6 +106,8 @@ pub struct Location {
     /// Structural kind.
     pub kind: LocationKind,
     /// Virtual boundary class when `kind == Virtual`.
+    /// Serde is PascalCase variant name or null; `Boundary` has no `JsonSchema`.
+    #[schemars(with = "Option<String>")]
     pub boundary_class: Option<Boundary>,
     /// Active flag.
     pub status: LocationStatus,
@@ -150,7 +153,7 @@ pub struct UpdateLocation {
 }
 
 /// Tree node for hierarchical responses.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct LocationTreeNode {
     /// This node.
     pub location: Location,
@@ -198,3 +201,77 @@ pub const BOUNDARY_VARIANTS: [Boundary; 7] = [
     Boundary::Consumed,
     Boundary::Produced,
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+
+    fn sample() -> Location {
+        Location {
+            id: LocationId::from_uuid(uuid::Uuid::nil()),
+            code: "WH-1".into(),
+            name: "Main".into(),
+            site_id: Identifier::from_uuid(uuid::Uuid::nil()),
+            parent_id: None,
+            kind: LocationKind::Warehouse,
+            boundary_class: None,
+            status: LocationStatus::Active,
+            work_order_id: None,
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn location_serde_keys_and_nulls() {
+        let v = serde_json::to_value(sample()).expect("json");
+        let obj = v.as_object().expect("object");
+        let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "boundary_class",
+                "code",
+                "id",
+                "kind",
+                "name",
+                "parent_id",
+                "site_id",
+                "status",
+                "version",
+                "work_order_id",
+            ]
+        );
+        assert_eq!(v["kind"], "warehouse");
+        assert_eq!(v["status"], "active");
+        assert_eq!(v["boundary_class"], Value::Null);
+        assert_eq!(v["parent_id"], Value::Null);
+        assert_eq!(v["work_order_id"], Value::Null);
+        assert_eq!(v["id"], uuid::Uuid::nil().to_string());
+    }
+
+    #[test]
+    fn location_kind_as_sql_matches_serde() {
+        for kind in [
+            LocationKind::Warehouse,
+            LocationKind::Area,
+            LocationKind::Bin,
+            LocationKind::Wip,
+            LocationKind::Osp,
+            LocationKind::Virtual,
+        ] {
+            let ser = serde_json::to_value(kind).expect("kind json");
+            assert_eq!(ser, kind.as_sql());
+        }
+    }
+
+    #[test]
+    fn boundary_class_serde_is_pascal_case() {
+        let mut loc = sample();
+        loc.kind = LocationKind::Virtual;
+        loc.boundary_class = Some(Boundary::Supplier);
+        let v = serde_json::to_value(&loc).expect("json");
+        assert_eq!(v["boundary_class"], "Supplier");
+    }
+}
