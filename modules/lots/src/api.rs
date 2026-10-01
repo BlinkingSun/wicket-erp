@@ -91,7 +91,7 @@ pub struct LotBody {
     pub supplier_lot: Option<String>,
     /// Heat / source reference.
     pub heat: Option<String>,
-    /// Expiry as `{date, precision}`.
+    /// Expiry as `{value, precision}`.
     pub expiry: Option<ExpiryWire>,
     /// Certificate reference.
     pub cert_ref: Option<String>,
@@ -124,9 +124,9 @@ impl From<Lot> for LotBody {
 }
 
 /// POST `/api/v1/lots` body.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct CreateLotBody {
-    /// Item id (client-supplied ids on `id` are refused by the server).
+    /// Item this lot belongs to.
     pub item_id: ItemId,
     /// Optional supplied kernel identifier.
     pub identifier: Option<String>,
@@ -136,7 +136,7 @@ pub struct CreateLotBody {
     pub supplier_lot: Option<String>,
     /// Heat / source reference.
     pub heat: Option<String>,
-    /// Expiry `{date, precision}`.
+    /// Expiry `{value, precision}`.
     pub expiry: Option<ExpiryWire>,
     /// Certificate reference.
     pub cert_ref: Option<String>,
@@ -145,7 +145,8 @@ pub struct CreateLotBody {
 }
 
 /// List envelope.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+#[schemars(bound = "T: JsonSchema")]
 pub struct ListBody<T> {
     /// Page.
     pub data: Vec<T>,
@@ -186,7 +187,7 @@ impl From<Serial> for SerialBody {
 }
 
 /// POST `/api/v1/lots/{id}/serials` body.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct CreateSerialsBody {
     /// How many serials to allocate.
     pub count: u32,
@@ -195,7 +196,7 @@ pub struct CreateSerialsBody {
 }
 
 /// POST `/api/v1/lots/{id}/status` body.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct SetStatusBody {
     /// New status.
     pub status: LotStatus,

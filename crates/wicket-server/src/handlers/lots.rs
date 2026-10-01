@@ -3,8 +3,9 @@
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wicket_core::{Identifier, LotId};
 use wicket_db::Tx;
 use wicket_mod_lots::{CreateLotBody, CreateSerialsBody, LotStatus, PackageLevel, SetStatusBody};
@@ -191,14 +192,42 @@ async fn set_status_inner(
     Ok((200, body))
 }
 
-#[derive(Deserialize)]
+/// POST `/api/v1/lots/{id}/packages` body. `contained` is the AnyQuantity wire
+/// (`docs/10` §3.1); the handler stores it as [`QuantityBody`] so amount stays a
+/// decimal string. `label_ref` is accepted and stored, not echoed.
+#[derive(Deserialize, JsonSchema)]
 pub struct PackageCreate {
     level: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
     contained: QuantityBody,
     #[serde(default)]
     parent_id: Option<String>,
     #[serde(default)]
     label_ref: Option<String>,
+}
+
+/// POST `/api/v1/lots/{id}/packages` 201 body. Frozen from the handler `json!`
+/// blob: field is `contained`, not `PackageBody.contained_quantity`; `label_ref`
+/// is omitted even when the request supplied one.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PackageCreatedBody {
+    id: String,
+    lot_id: String,
+    parent_id: Option<String>,
+    level: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
+    contained: QuantityBody,
+}
+
+/// GET `/api/v1/lots/{id}/packages` item. Frozen from the handler `json!` blob:
+/// omits `lot_id` and `label_ref`.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct PackageListItem {
+    id: String,
+    parent_id: Option<String>,
+    level: String,
+    #[schemars(with = "wicket_core::AnyQuantity")]
+    contained: QuantityBody,
 }
 
 /// POST /api/v1/lots/{id}/packages
@@ -258,13 +287,13 @@ async fn create_pkg_inner(
         body.label_ref.as_deref(),
     )
     .await?;
-    let body = json!({
-        "id": pkg.id.as_uuid().to_string(),
-        "lot_id": pkg.lot.to_string(),
-        "parent_id": pkg.parent.map(|p| p.as_uuid().to_string()),
-        "level": pkg.level.as_str(),
-        "contained": QuantityBody::from_qty(&pkg.contained),
-    });
+    let body = serde_json::to_value(&PackageCreatedBody {
+        id: pkg.id.as_uuid().to_string(),
+        lot_id: pkg.lot.to_string(),
+        parent_id: pkg.parent.map(|p| p.as_uuid().to_string()),
+        level: pkg.level.as_str().to_string(),
+        contained: QuantityBody::from_qty(&pkg.contained),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 201, &body).await?;
     tx.commit().await?;
     Ok((201, body))
@@ -305,18 +334,21 @@ async fn list_pkg_inner(
     let tree = wicket_mod_lots::package_hierarchy(&mut tx, lot_id).await;
     tx.rollback().await?;
     let tree = tree?;
-    let data: Vec<Value> = tree
+    let data: Vec<PackageListItem> = tree
         .iter()
-        .map(|p| {
-            json!({
-                "id": p.id.as_uuid().to_string(),
-                "parent_id": p.parent.map(|x| x.as_uuid().to_string()),
-                "level": p.level.as_str(),
-                "contained": QuantityBody::from_qty(&p.contained),
-            })
+        .map(|p| PackageListItem {
+            id: p.id.as_uuid().to_string(),
+            parent_id: p.parent.map(|x| x.as_uuid().to_string()),
+            level: p.level.as_str().to_string(),
+            contained: QuantityBody::from_qty(&p.contained),
         })
         .collect();
-    Ok(json!({"data": data, "next_cursor": null, "has_more": false}))
+    serde_json::to_value(&crate::envelope::ListBody {
+        data,
+        next_cursor: None,
+        has_more: false,
+    })
+    .map_err(Error::from)
 }
 
 /// GET /api/v1/lots/{id}/serials
@@ -438,4 +470,116 @@ async fn create_serials_inner(
     idempotency::remember(&mut tx, key, &hash, 201, &body).await?;
     tx.commit().await?;
     Ok((201, body))
+}
+
+#[cfg(test)]
+mod package_wire {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn create_package_named_type_matches_blob() {
+        let contained = QuantityBody {
+            amount: "24".into(),
+            unit: 1,
+            dimension: "Count".into(),
+        };
+        let blob = json!({
+            "id": "01932c5a-8b10-7001-8000-000000000001",
+            "lot_id": "01932c5a-8b10-7000-8000-000000000002",
+            "parent_id": serde_json::Value::Null,
+            "level": "case",
+            "contained": contained.clone(),
+        });
+        let typed = serde_json::to_value(&PackageCreatedBody {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            lot_id: "01932c5a-8b10-7000-8000-000000000002".into(),
+            parent_id: None,
+            level: "case".into(),
+            contained,
+        })
+        .expect("serialize");
+        assert_eq!(blob, typed);
+    }
+
+    #[test]
+    fn list_packages_named_type_matches_blob() {
+        let contained = QuantityBody {
+            amount: "24.00000000".into(),
+            unit: 1,
+            dimension: "Count".into(),
+        };
+        let item_blob = json!({
+            "id": "01932c5a-8b10-7001-8000-000000000001",
+            "parent_id": serde_json::Value::Null,
+            "level": "case",
+            "contained": contained.clone(),
+        });
+        let item = PackageListItem {
+            id: "01932c5a-8b10-7001-8000-000000000001".into(),
+            parent_id: None,
+            level: "case".into(),
+            contained,
+        };
+        assert_eq!(item_blob, serde_json::to_value(&item).expect("item"));
+        let envelope_blob = json!({
+            "data": [item_blob],
+            "next_cursor": serde_json::Value::Null,
+            "has_more": false
+        });
+        let typed = serde_json::to_value(&crate::envelope::ListBody {
+            data: vec![item],
+            next_cursor: None,
+            has_more: false,
+        })
+        .expect("envelope");
+        assert_eq!(envelope_blob, typed);
+    }
+
+    fn object_schema<T: schemars::JsonSchema>() -> serde_json::Value {
+        let mut value = serde_json::to_value(schemars::schema_for!(T)).expect("schema");
+        if value.get("properties").is_none() {
+            let name = T::schema_name();
+            if let Some(defn) = value.get("definitions").and_then(|d| d.get(&name)).cloned() {
+                value = defn;
+            }
+        }
+        value
+    }
+
+    #[test]
+    fn package_schema_matches_frozen_blob_keys() {
+        let created = object_schema::<PackageCreatedBody>();
+        let mut created_props: Vec<_> = created["properties"]
+            .as_object()
+            .expect("created properties")
+            .keys()
+            .cloned()
+            .collect();
+        created_props.sort();
+        assert_eq!(
+            created_props,
+            ["contained", "id", "level", "lot_id", "parent_id"]
+        );
+        assert!(created["properties"].get("label_ref").is_none());
+        assert!(created["properties"].get("contained_quantity").is_none());
+        let contained = &created["properties"]["contained"];
+        let contained_ref = contained["$ref"]
+            .as_str()
+            .or_else(|| contained["allOf"][0]["$ref"].as_str())
+            .unwrap_or_else(|| panic!("contained schema: {contained}"));
+        assert!(contained_ref.ends_with("/AnyQuantity"), "{contained_ref}");
+
+        let item = object_schema::<PackageListItem>();
+        let mut item_props: Vec<_> = item["properties"]
+            .as_object()
+            .expect("item properties")
+            .keys()
+            .cloned()
+            .collect();
+        item_props.sort();
+        assert_eq!(item_props, ["contained", "id", "level", "parent_id"]);
+        assert!(item["properties"].get("lot_id").is_none());
+        assert!(item["properties"].get("label_ref").is_none());
+    }
 }
