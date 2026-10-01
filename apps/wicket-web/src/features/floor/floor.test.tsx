@@ -134,6 +134,9 @@ describe("shop-floor terminal", () => {
     expect(getWorkOrder).toHaveBeenCalledWith(sampleWorkOrder.id);
     expect(getItem).toHaveBeenCalledWith(sampleWorkOrder.itemId);
     expect(await screen.findByText("A. Tester")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link", { name: "Back to work orders" }),
+    ).toHaveLength(1);
   });
 
   it("shows the identifier-lookup message on scan submit and echoes the input", async () => {

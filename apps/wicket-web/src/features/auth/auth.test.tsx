@@ -17,7 +17,6 @@ import {
   getCsrfToken,
   getSession,
   setSession,
-  setTestTreatAsSignedIn,
   setUnauthorizedNavigate,
 } from "./session";
 
@@ -57,7 +56,6 @@ function renderApp(path: string) {
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
-  setTestTreatAsSignedIn(false);
   clearSession();
   dropAuthCookies();
   bindQueryClient(null);
@@ -66,7 +64,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  setTestTreatAsSignedIn(true);
   clearSession();
   dropAuthCookies();
   bindQueryClient(null);

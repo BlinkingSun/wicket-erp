@@ -40,7 +40,7 @@ export function ItemMasterScreen({ itemId }: ItemMasterScreenProps) {
       <header className="item-master__header">
         <div className="item-master__title-row">
           <div className="item-master__title-block">
-            <h2 className="item-master__number">{item.number}</h2>
+            <h2 className="item-master__number mono">{item.number}</h2>
             <span className="item-master__revision">Rev {item.revision}</span>
             <span className="status-pill">{item.statusLabel}</span>
           </div>

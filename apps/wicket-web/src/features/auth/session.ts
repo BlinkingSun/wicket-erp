@@ -20,10 +20,6 @@ let snapshot: SessionSnapshot = {
 let queryClient: QueryClient | null = null;
 let onUnauthorizedNavigate: (() => void) | null = null;
 
-export function setTestTreatAsSignedIn(value: boolean): void {
-  void value;
-}
-
 function emit(): void {
   for (const listener of listeners) {
     listener();
