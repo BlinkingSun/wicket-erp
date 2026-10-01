@@ -1,8 +1,8 @@
 //! Body schemas for kernel operations (login, navigation, OpenAPI, manifest, audit).
 //!
-//! `health` returns `text/plain` and `logout` returns 204 with no body. The
-//! registration seam only attaches `application/json` on HTTP 200, so those
-//! two ids are not registered (a JSON 200 schema would be a false contract).
+//! `health` returns `text/plain` and `logout` returns 204 with no body. They are
+//! not JSON-200 bindings. [`apply_non_json_success`] writes those success
+//! responses when the document is built.
 
 use super::{SchemaBinding, SchemaMap, merge_type, schema_ref};
 use crate::handlers::kernel::{
@@ -10,7 +10,34 @@ use crate::handlers::kernel::{
     ValidationManifestBody,
 };
 use crate::handlers::{LoginBody, LoginResponse, NavigationBody};
-use serde_json::Value;
+use serde_json::{Value, json};
+
+/// Write the success response for operations that are not JSON on HTTP 200.
+///
+/// `health` is `200` `text/plain` with a string schema and no `application/json`.
+/// `logout` is `204` with a description and no body; the shared `200` stamp is
+/// removed and no `requestBody` is added. Returns whether `id` is one of those
+/// operations.
+pub fn apply_non_json_success(op: &mut Value, id: &str) -> bool {
+    match id {
+        "health" => {
+            op["responses"]["200"]["content"] = json!({
+                "text/plain": {
+                    "schema": { "type": "string" }
+                }
+            });
+            true
+        }
+        "logout" => {
+            if let Some(responses) = op.get_mut("responses").and_then(Value::as_object_mut) {
+                responses.remove("200");
+                responses.insert("204".to_owned(), json!({ "description": "no content" }));
+            }
+            true
+        }
+        _ => false,
+    }
+}
 
 pub fn register(map: &mut SchemaMap) {
     map.insert(

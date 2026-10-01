@@ -5026,11 +5026,11 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "ok"
-          },
           "201": {
             "description": "created"
+          },
+          "204": {
+            "description": "no content"
           },
           "400": {
             "description": "validation"
@@ -7944,6 +7944,13 @@
         "operationId": "health",
         "responses": {
           "200": {
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
             "description": "ok"
           },
           "201": {

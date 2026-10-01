@@ -3683,15 +3683,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description ok */
-            200: {
+            /** @description created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description created */
-            201: {
+            /** @description no content */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7204,7 +7204,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/plain": string;
+                };
             };
             /** @description created */
             201: {

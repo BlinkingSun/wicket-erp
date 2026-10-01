@@ -2090,11 +2090,110 @@ async fn served_openapi_describes_inputs_from_handlers_and_engine() {
     }
 }
 
-/// Registered body schemas on the *served* document (ADR 0011). Walks
-/// `schema_bindings()` — derived from `schemas::all()` — so a later lane
-/// typing an unregistered operation is not frozen out. The table-walk is a
-/// twin of `every_capability_has_a_handler`; this test is the contract a
-/// generated client would read.
+fn assert_wave1_operations_typed(label: &str, doc: &Value, registered: &[(&str, bool)]) {
+    let all_ids: BTreeSet<&str> = capabilities().map(|cap| cap.id).collect();
+    assert_eq!(all_ids.len(), 72, "{label} capability denominator");
+    let mut typed = BTreeSet::new();
+    let mut untyped = BTreeSet::new();
+    for cap in capabilities() {
+        let op = served_operation(doc, cap);
+        let has_request = registered
+            .iter()
+            .find(|(id, _)| *id == cap.id)
+            .map(|(_, flag)| *flag);
+        if operation_is_typed(cap.id, op, has_request) {
+            typed.insert(cap.id);
+        } else {
+            untyped.insert(cap.id);
+        }
+    }
+    assert_eq!(
+        typed, all_ids,
+        "{label} typed set must equal all 72 operation ids; untyped={untyped:?}"
+    );
+    assert!(
+        untyped.is_empty(),
+        "{label} untyped remainder must be empty: {untyped:?}"
+    );
+    eprintln!(
+        "{label} typed {} of {} remainder empty",
+        typed.len(),
+        all_ids.len()
+    );
+
+    for (id, has_request) in registered {
+        let cap = capabilities()
+            .find(|c| c.id == *id)
+            .unwrap_or_else(|| panic!("{id} missing from capability table"));
+        let op = served_operation(doc, cap);
+        let schema = &op["responses"]["200"]["content"]["application/json"]["schema"];
+        assert!(
+            schema.is_object(),
+            "{label} {id} missing responses.200 content schema: {schema}"
+        );
+        if *has_request {
+            let req = &op["requestBody"]["content"]["application/json"]["schema"];
+            assert!(
+                req.is_object(),
+                "{label} {id} missing requestBody schema: {req}"
+            );
+        } else {
+            assert!(
+                op.get("requestBody").is_none(),
+                "{label} {id} must not advertise a requestBody"
+            );
+        }
+    }
+}
+
+fn operation_is_typed(id: &str, op: &Value, has_request: Option<bool>) -> bool {
+    match id {
+        "health" => {
+            let content = &op["responses"]["200"]["content"];
+            let schema = content
+                .get("text/plain")
+                .and_then(|media| media.get("schema"));
+            schema == Some(&json!({ "type": "string" }))
+                && content.get("application/json").is_none()
+        }
+        "logout" => {
+            let Some(no_content) = op["responses"].get("204") else {
+                return false;
+            };
+            let described = no_content
+                .get("description")
+                .and_then(Value::as_str)
+                .is_some_and(|text| !text.is_empty());
+            described
+                && no_content.get("content").is_none()
+                && op.get("requestBody").is_none()
+                && op["responses"].get("200").is_none()
+        }
+        _ => {
+            let Some(has_request) = has_request else {
+                return false;
+            };
+            let schema = &op["responses"]["200"]["content"]["application/json"]["schema"];
+            if !schema.is_object() {
+                return false;
+            }
+            if has_request {
+                op["requestBody"]["content"]["application/json"]["schema"].is_object()
+            } else {
+                op.get("requestBody").is_none()
+            }
+        }
+    }
+}
+
+/// Registered body schemas on the *served* document (ADR 0011).
+///
+/// An ordinary operation is typed when its 200 `application/json` schema is an
+/// object and a JSON `requestBody` is present exactly when the binding has one.
+/// `health` is typed only as 200 `text/plain` with `{ "type": "string" }` and
+/// no `application/json`. `logout` is typed only as 204 with a description, no
+/// content, no `requestBody`, and no `200`. The typed set must equal all 72
+/// operation ids on each profile.
 #[tokio::test(flavor = "multi_thread")]
 async fn served_openapi_carries_wave1_body_schemas() {
     if common::skip_if_no_pg() {
@@ -2111,27 +2210,7 @@ async fn served_openapi_carries_wave1_body_schemas() {
         assert_eq!(st, StatusCode::OK, "{doc}");
         let listed = registered_operations(&doc);
         assert_eq!(listed.len(), 72, "operation set must stay at 72");
-
-        for (id, has_request) in &registered {
-            let cap = capabilities()
-                .find(|c| c.id == *id)
-                .unwrap_or_else(|| panic!("{id} missing from capability table"));
-            let op = served_operation(&doc, cap);
-            let schema = &op["responses"]["200"]["content"]["application/json"]["schema"];
-            assert!(
-                schema.is_object(),
-                "{id} missing responses.200 content schema: {schema}"
-            );
-            if *has_request {
-                let req = &op["requestBody"]["content"]["application/json"]["schema"];
-                assert!(req.is_object(), "{id} missing requestBody schema: {req}");
-            } else {
-                assert!(
-                    op.get("requestBody").is_none(),
-                    "{id} must not advertise a requestBody"
-                );
-            }
-        }
+        assert_wave1_operations_typed(w.profile.as_str(), &doc, &registered);
 
         let trace_cap = capabilities()
             .find(|c| c.id == "traceGenealogy")

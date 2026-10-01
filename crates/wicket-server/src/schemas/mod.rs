@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
+use serde_json::map::Entry;
 use serde_json::{Value, json};
 use wicket_mod_genealogy::TraceBody;
 
@@ -117,15 +118,68 @@ pub(crate) fn merge_type<T: JsonSchema>(into: &mut serde_json::Map<String, Value
         .and_then(|o| o.remove("definitions").or_else(|| o.remove("$defs")));
     if let Some(Value::Object(defs)) = defs {
         for (k, v) in defs {
-            into.entry(k).or_insert(v);
+            insert_schema(into, k, v);
         }
     }
     if let Some(obj) = value.as_object_mut() {
         obj.remove("$schema");
         if obj.get("$ref").is_none() && !obj.is_empty() {
-            into.entry(T::schema_name()).or_insert(value);
+            insert_schema(into, T::schema_name(), value);
         }
     }
+}
+
+/// Keep the first object when the shape matches. A different shape is a hard error.
+///
+/// Shape drops every `description` key. It also drops a `title` key on a schema
+/// object (`type`, `properties`, `$ref`, combinators, or `items` is present).
+/// `ListBody_for_SerialBody` differs only by description. The same Rust type is
+/// inserted again from a parent definition, and schemars omits `title` on that
+/// copy. A property named `title` stays in the shape. The first object is never
+/// rewritten.
+fn insert_schema(into: &mut serde_json::Map<String, Value>, name: String, incoming: Value) {
+    match into.entry(name) {
+        Entry::Vacant(slot) => {
+            slot.insert(incoming);
+        }
+        Entry::Occupied(existing) => {
+            if schema_shape(existing.get()) != schema_shape(&incoming) {
+                panic!(
+                    "OpenAPI schema `{}` re-registered with a different shape",
+                    existing.key()
+                );
+            }
+        }
+    }
+}
+
+fn schema_shape(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let annotation = is_schema_object(map);
+            let mut out = serde_json::Map::new();
+            for (key, child) in map {
+                if key == "description" || (key == "title" && annotation) {
+                    continue;
+                }
+                out.insert(key.clone(), schema_shape(child));
+            }
+            Value::Object(out)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(schema_shape).collect()),
+        other => other.clone(),
+    }
+}
+
+fn is_schema_object(map: &serde_json::Map<String, Value>) -> bool {
+    map.contains_key("type")
+        || map.contains_key("properties")
+        || map.contains_key("$ref")
+        || map.contains_key("oneOf")
+        || map.contains_key("anyOf")
+        || map.contains_key("allOf")
+        || map.contains_key("enum")
+        || map.contains_key("items")
 }
 
 fn rewrite_definition_refs(value: &mut Value) {
@@ -166,5 +220,133 @@ fn convert_trace_body_anyof_to_oneof(schemas: &mut serde_json::Map<String, Value
             "{} schema has neither anyOf nor oneOf",
             TraceBody::schema_name()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_type;
+    use schemars::JsonSchema;
+    use serde_json::Value;
+
+    fn serial_list_name() -> String {
+        <crate::envelope::ListBody<wicket_mod_lots::SerialBody> as JsonSchema>::schema_name()
+    }
+
+    #[test]
+    fn list_body_for_serial_body_shapes_match_and_envelope_text_wins() {
+        let name = serial_list_name();
+        assert_eq!(
+            <wicket_mod_lots::ListBody<wicket_mod_lots::SerialBody> as JsonSchema>::schema_name(),
+            name,
+            "the legal collision must share one schema name"
+        );
+        let mut schemas = serde_json::Map::new();
+        merge_type::<crate::envelope::ListBody<wicket_mod_lots::SerialBody>>(&mut schemas);
+        let first = schemas.get(&name).expect("envelope list schema").clone();
+        let description = first
+            .get("description")
+            .and_then(Value::as_str)
+            .expect("envelope description");
+        assert!(
+            description.contains("docs/10"),
+            "envelope description must be the kept text: {description}"
+        );
+        merge_type::<wicket_mod_lots::ListBody<wicket_mod_lots::SerialBody>>(&mut schemas);
+        assert_eq!(
+            schemas.get(&name).expect("kept list schema"),
+            &first,
+            "shape-equal re-registration must keep the first object unchanged"
+        );
+    }
+
+    #[test]
+    fn identical_double_merge_of_the_same_type_does_not_fail() {
+        let mut schemas = serde_json::Map::new();
+        merge_type::<crate::envelope::ListBody<wicket_mod_lots::SerialBody>>(&mut schemas);
+        let first = schemas.clone();
+        merge_type::<crate::envelope::ListBody<wicket_mod_lots::SerialBody>>(&mut schemas);
+        assert_eq!(schemas, first);
+    }
+
+    #[test]
+    #[should_panic(expected = "re-registered with a different shape")]
+    fn different_shape_under_an_existing_name_panics() {
+        let name = serial_list_name();
+        let mut schemas = serde_json::Map::new();
+        schemas.insert(name, serde_json::json!({ "type": "string" }));
+        merge_type::<crate::envelope::ListBody<wicket_mod_lots::SerialBody>>(&mut schemas);
+    }
+
+    #[test]
+    fn schema_title_annotation_keeps_the_first_object() {
+        let mut schemas = serde_json::Map::new();
+        let first = serde_json::json!({
+            "title": "ItemBody",
+            "description": "root",
+            "type": "object",
+            "properties": {
+                "id": { "type": "string", "description": "Surrogate id." }
+            }
+        });
+        super::insert_schema(&mut schemas, "ItemBody".to_owned(), first.clone());
+        super::insert_schema(
+            &mut schemas,
+            "ItemBody".to_owned(),
+            serde_json::json!({
+                "description": "definition copy",
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "other words" }
+                }
+            }),
+        );
+        assert_eq!(schemas.get("ItemBody"), Some(&first));
+    }
+
+    #[test]
+    #[should_panic(expected = "re-registered with a different shape")]
+    fn title_property_type_change_is_a_different_shape() {
+        let mut schemas = serde_json::Map::new();
+        super::insert_schema(
+            &mut schemas,
+            "Doc".to_owned(),
+            serde_json::json!({
+                "type": "object",
+                "properties": { "title": { "type": "string" } }
+            }),
+        );
+        super::insert_schema(
+            &mut schemas,
+            "Doc".to_owned(),
+            serde_json::json!({
+                "type": "object",
+                "properties": { "title": { "type": "integer" } }
+            }),
+        );
+    }
+
+    #[test]
+    fn component_schemas_match_committed_fixtures_and_keep_envelope_text() {
+        let schemas = super::component_schemas();
+        let description = schemas
+            .get(&serial_list_name())
+            .and_then(|schema| schema.get("description"))
+            .and_then(Value::as_str)
+            .expect("ListBody_for_SerialBody description");
+        assert!(
+            description.contains("docs/10"),
+            "production merge must keep the envelope text: {description}"
+        );
+        for fixture in [
+            include_str!("../../tests/fixtures/openapi-document.json"),
+            include_str!("../../tests/fixtures/openapi-document-regulated.json"),
+        ] {
+            let doc: Value = serde_json::from_str(fixture).expect("openapi fixture");
+            let expected = doc["components"]["schemas"]
+                .as_object()
+                .expect("components.schemas");
+            assert_eq!(&schemas, expected);
+        }
     }
 }
