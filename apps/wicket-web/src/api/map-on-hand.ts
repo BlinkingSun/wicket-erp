@@ -1,4 +1,6 @@
-import type { OnHandBodyWire } from "./types/on-hand";
+import type { components } from "./generated/openapi";
+
+export type OnHandBodyWire = components["schemas"]["OnHandBody"];
 
 export type OnHandView = {
   onHand: string;
@@ -12,7 +14,7 @@ export function mapOnHandBody(body: OnHandBodyWire): OnHandView {
   };
 }
 
-export function parseOnHandBody(payload: unknown): OnHandView {
+export function parseOnHandBody(payload: object): OnHandView {
   if (payload === null || typeof payload !== "object") {
     throw new Error("On-hand response was not an object.");
   }

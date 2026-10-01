@@ -1,4 +1,8 @@
+import type { components } from "./generated/openapi";
 import { parseItemBody } from "./map-item";
+
+export type ItemListBodyWire = components["schemas"]["ListBody_for_ItemBody"];
+export type ResolveItemBodyWire = components["schemas"]["ResolveIdBody"];
 
 export type ItemListRowView = {
   id: string;
@@ -19,16 +23,23 @@ export type ResolvedItemIdView = {
   id: string;
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+type FieldBag = {
+  [key: string]: string | number | boolean | null | object | undefined;
+};
+
+function isRecord(value: object | null): value is FieldBag {
   return value !== null && typeof value === "object";
 }
 
-export function parseItemListBody(payload: unknown): ItemListPageView {
+export function parseItemListBody(payload: object): ItemListPageView {
   if (!isRecord(payload) || !Array.isArray(payload.data)) {
     throw new Error("Item list response was not a list envelope.");
   }
   const rows: ItemListRowView[] = [];
   for (const entry of payload.data) {
+    if (entry === null || typeof entry !== "object") {
+      throw new Error("Item list response was not a list envelope.");
+    }
     const item = parseItemBody(entry);
     rows.push({
       id: item.id,
@@ -50,7 +61,7 @@ export function parseItemListBody(payload: unknown): ItemListPageView {
   };
 }
 
-export function parseResolveItemBody(payload: unknown): ResolvedItemIdView {
+export function parseResolveItemBody(payload: object): ResolvedItemIdView {
   if (!isRecord(payload) || typeof payload.id !== "string" || payload.id.length === 0) {
     throw new Error("Item resolve response missing id.");
   }

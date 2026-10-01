@@ -1,8 +1,13 @@
 // Lane c3-floor: listWorkOrders, resolveWorkOrderByNumber land here.
 
 import { getJson } from "../http";
+import { jsonObject } from "./object";
 import { parseWorkOrderBody } from "../map-work-order";
+import type { components } from "../generated/openapi";
 import type { WorkOrderView } from "../view-models";
+
+type WorkOrderListWire = components["schemas"]["ListBody_for_WorkOrderJson"];
+type ResolveIdWire = components["schemas"]["ResolveIdBody"];
 
 export type WorkOrderListPage = {
   data: WorkOrderView[];
@@ -17,8 +22,9 @@ export type ListWorkOrdersArgs = {
 };
 
 export async function getWorkOrder(workOrderId: string): Promise<WorkOrderView> {
-  const payload = await getJson(
-    `/api/v1/work-orders/${encodeURIComponent(workOrderId)}`,
+  const payload = jsonObject(
+    await getJson(`/api/v1/work-orders/${encodeURIComponent(workOrderId)}`),
+    "Work order response was not an object.",
   );
   return parseWorkOrderBody(payload);
 }
@@ -38,41 +44,36 @@ export async function listWorkOrders(
   }
   const query = params.toString();
   const path = query ? `/api/v1/work-orders?${query}` : "/api/v1/work-orders";
-  return parseWorkOrderList(await getJson(path));
+  return parseWorkOrderList(
+    jsonObject(await getJson(path), "Work order list response was not an object."),
+  );
 }
 
 export async function resolveWorkOrderByNumber(
   number: string,
 ): Promise<{ id: string }> {
   const params = new URLSearchParams({ number });
-  const payload = await getJson(
-    `/api/v1/work-orders/resolve?${params.toString()}`,
+  const payload = jsonObject(
+    await getJson(`/api/v1/work-orders/resolve?${params.toString()}`),
+    "Work order resolve response was not an object.",
   );
-  if (payload === null || typeof payload !== "object") {
-    throw new Error("Work order resolve response was not an object.");
-  }
-  const id = (payload as { id?: unknown }).id;
+  const id = (payload as ResolveIdWire).id;
   if (typeof id !== "string" || id.length === 0) {
     throw new Error("Work order resolve response missing id.");
   }
   return { id };
 }
 
-function parseWorkOrderList(payload: unknown): WorkOrderListPage {
-  if (payload === null || typeof payload !== "object") {
-    throw new Error("Work order list response was not an object.");
-  }
-  const body = payload as {
-    data?: unknown;
-    next_cursor?: unknown;
-    has_more?: unknown;
-  };
+function parseWorkOrderList(payload: object): WorkOrderListPage {
+  const body = payload as WorkOrderListWire;
   if (!Array.isArray(body.data)) {
     throw new Error("Work order list response missing data.");
   }
   const nextCursor =
-    body.next_cursor === null || typeof body.next_cursor === "string"
-      ? body.next_cursor
+    body.next_cursor === null ||
+    body.next_cursor === undefined ||
+    typeof body.next_cursor === "string"
+      ? (body.next_cursor ?? null)
       : null;
   return {
     data: body.data.map(parseWorkOrderBody),

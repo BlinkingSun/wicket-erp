@@ -1,6 +1,7 @@
 // Lane c2-items: listItems, resolveItemByNumber land here.
 
 import { getJson, patchJson } from "../http";
+import { jsonObject } from "./object";
 import { parseItemBody } from "../map-item";
 import {
   parseItemListBody,
@@ -8,7 +9,7 @@ import {
   type ItemListPageView,
   type ResolvedItemIdView,
 } from "../map-item-list";
-import type { ItemPatchWire } from "../types/items";
+import type { ItemPatchWire } from "../map-item";
 import type { ItemMasterView } from "../view-models";
 
 export type { ItemListPageView, ResolvedItemIdView };
@@ -41,7 +42,10 @@ export async function listItems(
     params.set("status", query.status);
   }
   const qs = params.toString();
-  const payload = await getJson(qs ? `/api/v1/items?${qs}` : "/api/v1/items");
+  const payload = jsonObject(
+    await getJson(qs ? `/api/v1/items?${qs}` : "/api/v1/items"),
+    "Item list response was not an object.",
+  );
   return parseItemListBody(payload);
 }
 
@@ -49,12 +53,18 @@ export async function resolveItemByNumber(
   number: string,
 ): Promise<ResolvedItemIdView> {
   const params = new URLSearchParams({ number });
-  const payload = await getJson(`/api/v1/items/resolve?${params.toString()}`);
+  const payload = jsonObject(
+    await getJson(`/api/v1/items/resolve?${params.toString()}`),
+    "Item resolve response was not an object.",
+  );
   return parseResolveItemBody(payload);
 }
 
 export async function getItem(itemId: string): Promise<ItemMasterView> {
-  const payload = await getJson(`/api/v1/items/${encodeURIComponent(itemId)}`);
+  const payload = jsonObject(
+    await getJson(`/api/v1/items/${encodeURIComponent(itemId)}`),
+    "Item response was not an object.",
+  );
   return parseItemBody(payload);
 }
 
@@ -64,13 +74,16 @@ export async function updateItem(args: {
   version: number;
   idempotencyKey: string;
 }): Promise<ItemMasterView> {
-  const payload = await patchJson(
-    `/api/v1/items/${encodeURIComponent(args.itemId)}`,
-    args.patch,
-    {
-      "If-Match": String(args.version),
-      "Idempotency-Key": args.idempotencyKey,
-    },
+  const payload = jsonObject(
+    await patchJson(
+      `/api/v1/items/${encodeURIComponent(args.itemId)}`,
+      args.patch,
+      {
+        "If-Match": String(args.version),
+        "Idempotency-Key": args.idempotencyKey,
+      },
+    ),
+    "Item response was not an object.",
   );
   return parseItemBody(payload);
 }

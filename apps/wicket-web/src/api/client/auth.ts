@@ -1,6 +1,7 @@
 // Lane c1-auth: login, logout, getNavigation land here.
 
 import { getJson, postJson } from "../http";
+import { jsonObject } from "./object";
 import {
   parseLoginBody,
   parseNavigationBody,
@@ -12,7 +13,10 @@ import type { OwnProfileView } from "../view-models";
 export type { LoginView, NavigationView };
 
 export async function getOwnProfile(): Promise<OwnProfileView> {
-  const payload = await getJson("/api/v1/identity/me");
+  const payload = jsonObject(
+    await getJson("/api/v1/identity/me"),
+    "Profile response was not an object.",
+  );
   return parseOwnProfileBody(payload);
 }
 
@@ -20,10 +24,13 @@ export async function login(args: {
   username: string;
   password: string;
 }): Promise<LoginView> {
-  const payload = await postJson(
-    "/api/v1/identity/login",
-    { username: args.username, password: args.password },
-    { skipUnauthorized: true },
+  const payload = jsonObject(
+    await postJson(
+      "/api/v1/identity/login",
+      { username: args.username, password: args.password },
+      { skipUnauthorized: true },
+    ),
+    "Login response was not an object.",
   );
   return parseLoginBody(payload);
 }
@@ -33,6 +40,9 @@ export async function logout(): Promise<void> {
 }
 
 export async function getNavigation(): Promise<NavigationView> {
-  const payload = await getJson("/api/v1/navigation");
+  const payload = jsonObject(
+    await getJson("/api/v1/navigation"),
+    "Navigation response was not an object.",
+  );
   return parseNavigationBody(payload);
 }
