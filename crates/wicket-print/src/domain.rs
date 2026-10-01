@@ -1,5 +1,6 @@
 //! Domain types for deterministic rendering.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use wicket_core::Identifier;
 use wicket_documents::BlobHash;
@@ -51,7 +52,7 @@ impl Format {
 }
 
 /// Latest effective template row (list seam; no body).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TemplateSummary {
     /// Template id (`document_revision`, `generic_record`, `work_order_traveler`).
     pub template_id: String,

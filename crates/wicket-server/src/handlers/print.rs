@@ -6,11 +6,15 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Response};
-use serde::Deserialize;
-use serde_json::{Value, json};
+use schemars::JsonSchema;
+use schemars::r#gen::SchemaGenerator;
+use schemars::schema::{InstanceType, Schema, SchemaObject};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use wicket_core::{Identifier, RecordRef};
 use wicket_db::{ReadPool, Tx};
 use wicket_documents::{BlobHash, BlobStore};
+use wicket_esign::Manifestation;
 use wicket_print::{
     Format, TemplateId, archive as print_archive, list_templates_on, log as print_log,
     manifestation_block, render as print_render,
@@ -109,24 +113,143 @@ pub async fn render(State(state): State<AppState>, headers: H, body: Bytes) -> R
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct RecordBody {
+/// Record locator shared by print render and archive request bodies.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RecordBody {
     table: String,
     id: String,
     version: i64,
 }
 
-#[derive(Debug, Deserialize)]
-struct RenderBody {
+/// POST `/api/v1/print/render` body.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RenderBody {
     record: RecordBody,
     format: String,
     template_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ArchiveBody {
+/// POST `/api/v1/print/archive` body.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ArchiveBody {
     record: RecordBody,
     output_hash: String,
+}
+
+/// POST `/api/v1/print/render` success body.
+///
+/// This is the archival blob the handler emits today, not [`wicket_print::Rendered`].
+/// `output_hash` and `blob` hashes elsewhere are lowercase hex. `bytes_base64` is the
+/// rendition bytes. `manifestation` is [`Manifestation`] as `wicket-esign` serializes
+/// it. That type lives in a sibling crate, so its schema is hand-specified here rather
+/// than derived on a copy.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct RenderPrintResponse {
+    /// Lowercase hex SHA-256 of the rendition bytes.
+    output_hash: String,
+    /// Template row version used.
+    template_version: i32,
+    /// Crate version that produced the bytes.
+    renderer_version: String,
+    /// Base64 of the rendition bytes.
+    bytes_base64: String,
+    /// Esign snapshots for the record. Empty when none exist.
+    #[schemars(schema_with = "manifestation_list_schema")]
+    manifestation: Vec<Manifestation>,
+}
+
+/// POST `/api/v1/print/archive` success body.
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct ArchivePrintResponse {
+    /// Lowercase hex SHA-256 of the archived blob.
+    blob_hash: String,
+}
+
+/// Schema for `Vec<Manifestation>` matching that type's serde shape.
+///
+/// Keys are always present. `reason` and `superseded_by_version` are null when unset.
+fn manifestation_list_schema(generator: &mut SchemaGenerator) -> Schema {
+    let signature = object(
+        vec![
+            ("id", generator.subschema_for::<String>()),
+            ("signer_id", generator.subschema_for::<String>()),
+            ("printed_name", generator.subschema_for::<String>()),
+            ("meaning", generator.subschema_for::<String>()),
+            ("reason", generator.subschema_for::<Option<String>>()),
+            ("signed_at", generator.subschema_for::<String>()),
+            ("signed_at_zone", generator.subschema_for::<String>()),
+            ("signed_at_local", generator.subschema_for::<String>()),
+            (
+                "record",
+                object(
+                    vec![
+                        ("table", generator.subschema_for::<String>()),
+                        ("doc_type", generator.subschema_for::<String>()),
+                        ("id", generator.subschema_for::<String>()),
+                        ("version", generator.subschema_for::<i64>()),
+                    ],
+                    &["table", "doc_type", "id", "version"],
+                ),
+            ),
+            ("record_content_hash", generator.subschema_for::<String>()),
+            ("credential_kind", generator.subschema_for::<String>()),
+            ("components_used", generator.subschema_for::<Vec<String>>()),
+            ("superseded", generator.subschema_for::<bool>()),
+            (
+                "superseded_by_version",
+                with_default_null(generator.subschema_for::<Option<i64>>()),
+            ),
+        ],
+        &[
+            "id",
+            "signer_id",
+            "printed_name",
+            "meaning",
+            "reason",
+            "signed_at",
+            "signed_at_zone",
+            "signed_at_local",
+            "record",
+            "record_content_hash",
+            "credential_kind",
+            "components_used",
+            "superseded",
+            "superseded_by_version",
+        ],
+    );
+    array_of(object(vec![("signature", signature)], &["signature"]))
+}
+
+fn with_default_null(schema: Schema) -> Schema {
+    let mut obj = schema.into_object();
+    obj.metadata().default = Some(Value::Null);
+    Schema::Object(obj)
+}
+
+fn object(fields: Vec<(&str, Schema)>, required: &[&str]) -> Schema {
+    let mut obj = SchemaObject {
+        instance_type: Some(InstanceType::Object.into()),
+        ..Default::default()
+    };
+    {
+        let validation = obj.object();
+        for (name, schema) in fields {
+            validation.properties.insert(name.to_owned(), schema);
+        }
+        for name in required {
+            validation.required.insert((*name).to_owned());
+        }
+    }
+    Schema::Object(obj)
+}
+
+fn array_of(items: Schema) -> Schema {
+    let mut obj = SchemaObject {
+        instance_type: Some(InstanceType::Array.into()),
+        ..Default::default()
+    };
+    obj.array().items = Some(items.into());
+    Schema::Object(obj)
 }
 
 fn parse_record(body: &RecordBody) -> Result<RecordRef> {
@@ -236,13 +359,13 @@ async fn render_inner(
     }
     let rendered = print_render(&mut tx, record.clone(), format, template).await?;
     let manifestation = manifestation_block(&mut tx, record).await?;
-    let payload = json!({
-        "output_hash": hex_hash(&rendered.output_hash),
-        "template_version": rendered.template_version,
-        "renderer_version": rendered.renderer_version,
-        "bytes_base64": b64_encode(&rendered.bytes),
-        "manifestation": manifestation,
-    });
+    let payload = serde_json::to_value(RenderPrintResponse {
+        output_hash: hex_hash(&rendered.output_hash),
+        template_version: rendered.template_version,
+        renderer_version: rendered.renderer_version,
+        bytes_base64: b64_encode(&rendered.bytes),
+        manifestation,
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &payload).await?;
     tx.commit().await?;
     Ok((200, payload))
@@ -309,8 +432,159 @@ async fn archive_inner(
         ));
     }
     let blob: BlobHash = print_archive(&mut tx, &rendered, record, state.blobs()).await?;
-    let payload = json!({ "blob_hash": blob.to_hex() });
+    let payload = serde_json::to_value(ArchivePrintResponse {
+        blob_hash: blob.to_hex(),
+    })?;
     idempotency::remember(&mut tx, key, &hash, 200, &payload).await?;
     tx.commit().await?;
     Ok((200, payload))
+}
+
+#[cfg(test)]
+mod wire {
+    use super::{ArchivePrintResponse, RenderPrintResponse};
+    use serde_json::{Value, json};
+    use wicket_esign::{ManifestRecord, Manifestation, SignatureManifest};
+
+    fn sample_manifestation() -> Manifestation {
+        Manifestation {
+            signature: SignatureManifest {
+                id: "sig-1".into(),
+                signer_id: "principal-1".into(),
+                printed_name: "M. Reyes".into(),
+                meaning: "Approved".into(),
+                reason: None,
+                signed_at: "2026-09-19T00:00:00Z".into(),
+                signed_at_zone: "America/New_York".into(),
+                signed_at_local: "2026-09-18T20:00:00-04:00".into(),
+                record: ManifestRecord {
+                    table: "generic.record".into(),
+                    doc_type: "generic".into(),
+                    id: "11111111-1111-1111-1111-111111111111".into(),
+                    version: 1,
+                },
+                record_content_hash: "ab".repeat(32),
+                credential_kind: "password".into(),
+                components_used: vec!["identification".into()],
+                superseded: false,
+                superseded_by_version: None,
+            },
+        }
+    }
+
+    fn render_value(manifestation: Vec<Manifestation>) -> Value {
+        serde_json::to_value(RenderPrintResponse {
+            output_hash: "aa".repeat(32),
+            template_version: 1,
+            renderer_version: "0.1.0".into(),
+            bytes_base64: "QQ==".into(),
+            manifestation,
+        })
+        .expect("render json")
+    }
+
+    #[test]
+    fn render_named_type_matches_legacy_blob() {
+        let manifestation = vec![sample_manifestation()];
+        let blob = json!({
+            "output_hash": "aa".repeat(32),
+            "template_version": 1,
+            "renderer_version": "0.1.0",
+            "bytes_base64": "QQ==",
+            "manifestation": manifestation.clone(),
+        });
+        assert_eq!(blob, render_value(manifestation));
+    }
+
+    #[test]
+    fn archive_named_type_matches_legacy_blob() {
+        let blob = json!({ "blob_hash": "bb".repeat(32) });
+        let typed = serde_json::to_value(ArchivePrintResponse {
+            blob_hash: "bb".repeat(32),
+        })
+        .expect("archive json");
+        assert_eq!(blob, typed);
+    }
+
+    #[test]
+    fn render_omits_no_fields_when_manifestation_empty() {
+        let blob = json!({
+            "output_hash": "cc".repeat(32),
+            "template_version": 2,
+            "renderer_version": "0.1.0",
+            "bytes_base64": "",
+            "manifestation": [],
+        });
+        let typed = serde_json::to_value(RenderPrintResponse {
+            output_hash: "cc".repeat(32),
+            template_version: 2,
+            renderer_version: "0.1.0".into(),
+            bytes_base64: String::new(),
+            manifestation: Vec::new(),
+        })
+        .expect("empty manifestation json");
+        assert_eq!(blob, typed);
+        assert!(matches!(typed["manifestation"], Value::Array(ref a) if a.is_empty()));
+    }
+
+    fn type_includes(schema: &Value, expected: &str) -> bool {
+        match &schema["type"] {
+            Value::String(s) => s == expected,
+            Value::Array(items) => items.iter().any(|v| v.as_str() == Some(expected)),
+            _ => false,
+        }
+    }
+
+    fn assert_schema_covers(sample: &Value, schema: &Value) {
+        match sample {
+            Value::Object(map) => {
+                assert!(type_includes(schema, "object"), "{schema}");
+                let props = schema["properties"].as_object().expect("properties");
+                let mut sample_keys: Vec<_> = map.keys().cloned().collect();
+                let mut schema_keys: Vec<_> = props.keys().cloned().collect();
+                sample_keys.sort();
+                schema_keys.sort();
+                assert_eq!(sample_keys, schema_keys, "schema keys");
+                let mut required: Vec<_> = schema["required"]
+                    .as_array()
+                    .expect("required")
+                    .iter()
+                    .map(|v| v.as_str().expect("required name").to_owned())
+                    .collect();
+                required.sort();
+                assert_eq!(required, sample_keys, "always-present keys");
+                for (key, value) in map {
+                    assert_schema_covers(value, &props[key]);
+                }
+            }
+            Value::Array(items) => {
+                assert!(type_includes(schema, "array"), "{schema}");
+                if let Some(first) = items.first() {
+                    assert_schema_covers(first, &schema["items"]);
+                }
+            }
+            Value::Null => assert!(type_includes(schema, "null"), "{schema}"),
+            Value::Bool(_) => assert!(type_includes(schema, "boolean"), "{schema}"),
+            Value::Number(_) => assert!(
+                type_includes(schema, "integer") || type_includes(schema, "number"),
+                "{schema}"
+            ),
+            Value::String(_) => assert!(type_includes(schema, "string"), "{schema}"),
+        }
+    }
+
+    #[test]
+    fn render_manifestation_schema_matches_wire() {
+        let nulls = render_value(vec![sample_manifestation()]);
+        assert!(nulls["manifestation"][0]["signature"]["reason"].is_null());
+        assert!(nulls["manifestation"][0]["signature"]["superseded_by_version"].is_null());
+        let mut valued = sample_manifestation();
+        valued.signature.reason = Some("because".into());
+        valued.signature.superseded_by_version = Some(4);
+        let values = render_value(vec![valued]);
+        let root =
+            serde_json::to_value(schemars::schema_for!(RenderPrintResponse)).expect("schema");
+        assert_schema_covers(&nulls, &root);
+        assert_schema_covers(&values, &root);
+    }
 }

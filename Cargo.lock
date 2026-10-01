@@ -2755,6 +2755,7 @@ version = "0.1.0"
 dependencies = [
  "pdf-writer",
  "proptest",
+ "schemars",
  "serde",
  "serde_json",
  "sqlx",
