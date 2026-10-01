@@ -118,6 +118,9 @@ fn insert(
 }
 
 fn attach_body_schemas(op_v: &mut Value, id: &str) {
+    if crate::schemas::kernel::apply_non_json_success(op_v, id) {
+        return;
+    }
     let Some(binding) = crate::schemas::binding(id) else {
         return;
     };
