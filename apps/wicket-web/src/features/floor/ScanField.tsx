@@ -1,4 +1,4 @@
-import { Link, useNavigate, useParams } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { SCAN_LOOKUP_UNAVAILABLE } from "./unbacked";
 
@@ -28,9 +28,6 @@ type ScanFieldProps = {
 
 export function ScanField({ compact = false }: ScanFieldProps) {
   const navigate = useNavigate();
-  const params = useParams({ strict: false });
-  const workOrderId =
-    typeof params.workOrderId === "string" ? params.workOrderId : undefined;
   const [value, setValue] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [visibleMessage, setVisibleMessage] = useState<string | null>(null);
@@ -55,16 +52,6 @@ export function ScanField({ compact = false }: ScanFieldProps) {
 
   return (
     <form className={scanClass} onSubmit={handleSubmit} role="search">
-      {workOrderId ? (
-        <Link
-          to="/floor/work-orders"
-          className="floor-back"
-          aria-label="Back to work orders"
-          activeOptions={{ exact: true }}
-        >
-          BACK
-        </Link>
-      ) : null}
       <div className="floor-scan__outer">
         <button className="floor-scan__tap" type="submit">
           TAP OR SCAN

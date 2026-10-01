@@ -294,10 +294,6 @@ code,
   outline-offset: 2px;
 }
 
-.floor-scan > .floor-back {
-  display: none;
-}
-
 .floor-main {
   flex: 1;
   min-height: 0;
