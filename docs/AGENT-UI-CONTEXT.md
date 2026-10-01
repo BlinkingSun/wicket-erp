@@ -21,7 +21,7 @@ Re-read these if anything here might have moved:
 One engine process. Default bind `0.0.0.0:8080` (`WICKET_BIND` / `--bind` / TOML `bind` in `crates/wicket-server/src/config.rs`).
 
 - First-party Vite: `VITE_API_BASE` defaults to `""`. Dev server proxies `/api` to `WICKET_API_ORIGIN` or `http://127.0.0.1:8080` (`apps/wicket-web/vite.config.ts`, `apps/wicket-web/src/api/http.ts`).
-- Production: engine does **not** serve the SPA. CORS headers are ABSENT. Same-origin via reverse proxy, or native HTTP (Bearer). Do not assume `fetch` from another origin works.
+- Production: the engine serves the SPA when `WICKET_UI_ROOT` is set to a directory that contains `index.html` (`docs/12-configuration.md`; `crates/wicket-server/src/http.rs:148-152`). Unset, it does not serve `index.html` and is API only. CORS headers are ABSENT. Same-origin via that root, a reverse proxy, or native HTTP (Bearer). Do not assume `fetch` from another origin works.
 - LAN discovery, mDNS, deep links: ABSENT. Operator configures the origin.
 - TLS is not assumed. `Secure` cookies only when request has `X-Forwarded-Proto: https`.
 
@@ -39,7 +39,7 @@ No tenant id in path, header, or body. All public JSON routes are under `/api/v1
 - Do not mint UUIDs for records. Do not send `actor_id` / `user_id` / `posted_by`.
 - Do not hardcode the operation set. Profiles `plain-shop` and `regulated-device` change navigation and signature gates.
 
-Stack (ADR 0009): TypeScript, React, TanStack Query / Table / Router. One app, three mode route trees. Tauri v2 later for mac/linux/windows/android/ios; a browser on the LAN is a complete v1 client. The generated OpenAPI TypeScript client does not exist yet (no request/response schemas). Hand-write `fetch` against this file.
+Stack (ADR 0009): TypeScript, React, TanStack Query / Table / Router. One app, three mode route trees. Tauri v2 later for mac/linux/windows/android/ios; a browser on the LAN is a complete v1 client. The generated OpenAPI TypeScript client is `apps/wicket-web/src/api/generated/openapi.ts`, generated from `crates/wicket-server/tests/fixtures/openapi-document.json` by `just openapi-client`. `apps/wicket-web/src/api/http.ts` still performs `fetch`.
 
 ## Auth handshake
 
@@ -111,9 +111,9 @@ Enum casing is mixed. Copy the field: dimensions `Count`, item kind `make`, lot 
 
 ## Discovery
 
-1. `GET /api/v1/openapi.json` — unauthenticated. OpenAPI 3.0.3. Per operation: `operationId`, `x-wicket-permission`, parameters, optional `x-wicket-signature: { meaning, permission }`. No `requestBody`, no response schemas except `ErrorEnvelope`.
+1. `GET /api/v1/openapi.json` — unauthenticated. OpenAPI 3.0.3. 72 operations. Per operation: `operationId`, `x-wicket-permission`, parameters, optional `x-wicket-signature: { meaning, permission }`. 70 of 72 have a 200 `application/json` schema. `health` and `logout` do not: `health`'s 200 is description `ok` with no `content`, and `logout` has no JSON schema and no `requestBody`. 28 operations carry `requestBody`. `components.schemas` holds 114 schemas, including `ErrorEnvelope`. `plain-shop` advertises 0 signatures; `regulated-device` advertises 3 (`approveCalibration`, `approveDocument`, `releaseFromQuarantine`).
 2. `GET /api/v1/navigation` — `{ "visible": ["items", …], "hidden": ["calibration"] }`. Profile, not per-user.
-3. Do not assume the path set is stable across profiles. The router still mounts all 65 rows including disabled-module routes.
+3. Do not assume the path set is stable across profiles. The router still mounts all 72 rows (42 `kernel(`, 30 `module(`) including disabled-module routes.
 
 `x-wicket-permission` empty string = unauthenticated.
 

@@ -19,7 +19,7 @@ the item is real.
 **Stage 0 is the contribution product, and it comes first.** It needs no decision
 from the owner. It stops documents from lying to contributors now. Do it first.
 Most of Stage 0 landed in the 2026-09-14 swarm. T-01 and T-17 closed 2026-09-15.
-**Remaining: T-13 (licence-identifier backfill) and T-105 (lint the npm allowlists).**
+**Remaining: T-13 (licence-identifier backfill), T-105 (lint the npm allowlists), T-106 (drop the npm peer-resolution escape hatch), T-107 (`just ci-db` fails closed when the migrate URL is unset), T-108 (database-suite throughput ceiling), and T-110 (item-master part number is monospace).**
 
 **Stage 1 is the keystone, and it is blocked on accepting
 [ADR 0010](docs/adr/0010-one-registry.md).** Seven separate items from four analyses
@@ -57,6 +57,9 @@ that are currently false.
 | T-18 | **DONE.** One writer per file per wave | S | `CONTRIBUTING.md` §7 and `AGENTS.md` state one writer per file per wave. Historical `integrate: merge` overlapping-ownership commits remain in git history; new waves must not add more |
 | T-105 | **Lint the npm allowlists** | S | A script fails when `apps/wicket-web/package.json` gains a `dependencies` entry without an accepted request for comment, and when a `devDependencies` entry is imported by shipped code. GOV-7. ABSENT |
 | T-106 | **Drop the npm peer-resolution escape hatch** | S | `apps/wicket-web/.npmrc` no longer sets `legacy-peer-deps`, because `openapi-typescript` declares a peer range that includes the TypeScript major this app is on. Until then peer resolution is off workspace-wide |
+| T-107 | `just ci-db` fails closed when `WICKET_MIGRATE_DATABASE_URL` is unset | S | The recipe prints the unset name and exits non-zero before `cargo test`, instead of panicking inside `wicket_test::require_postgres` (`crates/wicket-test/src/lib.rs:78-80`) |
+| T-108 | Database-suite throughput ceiling | M | The bootstrap connect timeout is configurable, and a test does not force one Postgres checkpoint. Today the timeout is a hardcoded 2 s (`crates/wicket-test/src/lib.rs:63` and `:397`) and each test drops its database with `DROP DATABASE … WITH (FORCE)` (`lib.rs:187`, `lib.rs:390`) |
+| T-110 | Item-master part number is monospace with tabular figures | S | `h2.item-master__number` (`apps/wicket-web/src/features/items/ItemMasterScreen.tsx:43`) uses a monospace face and tabular figures. Today `apps/wicket-web/src/features/items/items.css:24` sets size, weight, and letter-spacing only, and does not use `.mono` (`apps/wicket-web/src/styles/global.css:40`) |
 
 ---
 
@@ -90,11 +93,12 @@ the wire. None of it is new functionality.
 | ID | Work | Size | Depends | Done when |
 |---|---|---|---|---|
 | T-30 | **DONE.** Mount the module reads and writes that already have handlers | M | T-24 | Item list and patch, location list, tree, patch and deactivate, lot list, serial creation, work-order list, and the genealogy impact and job routes all respond |
-| T-31 | Inventory writes | L | T-24 | Issues, moves, adjustments, document read and void are mounted with tests, or their declarations are removed in the same change |
+| T-31 | Inventory writes | L | T-24 | Issues, moves, adjustments, document read and void are mounted with tests, or their declarations are removed in the same change. `modules/inventory/src/api.rs:65` declares operation id `getDocument` on `GET /api/v1/inventory/documents/{id}`; kernel `GET /api/v1/documents/{id}` already uses `getDocument` (`crates/wicket-server/src/capabilities.rs:364`). The inventory route is unmounted. The mount-time name is `getInventoryDocument`. Wave ui2 renames it |
 | T-32 | Remaining machine edges | M | T-24 | Item obsolete, work-order cancel, and the document lifecycle edges each have an operation with optimistic concurrency |
-| T-33 | Job status, enqueue and cancel | M | T-24 | A job identifier returned by a trace resolves. Today `modules/genealogy` returns one into a route that does not exist |
+| T-33 | Job status, enqueue and cancel | M | T-24 | A job identifier returned by a trace resolves at `getGenealogyJob` (`crates/wicket-server/src/http.rs:99`). Enqueue and cancel are still unmounted |
 | T-34 | Kernel administration over HTTP | L | T-24 | Module registry, principals and roles, numbering, units of measure, and audit verification and export are reachable without linking the crate |
-| T-35 | **Wave 0 DONE** (inputs described; signature meaning truthful). Typed bodies remain, gated on the schemars RFC. Document schemas and per-edge signature meaning | L | T-25 | Every operation carries request and response schemas; the signature meaning equals the edge's own meaning rather than the literal constant stamped on every transition today (`crates/wicket-server/src/openapi.rs:465-470`) |
+| T-35 | **Wave 0 DONE** (inputs described; signature meaning reads `signature_edges`). Typed bodies: 70 of 72. Document schemas and per-edge signature meaning | L | T-25 | Every operation carries request and response schemas. 70 of 72 do, on both profiles; `health` and `logout` do not. Signature meaning reads the edge (`crates/wicket-server/src/openapi.rs:50-68`); `setLotStatus` is omitted by id (`openapi.rs:55-57`) |
+| T-109 | Schema registration rejects a differently-shaped duplicate name | S | T-25 | A second `JsonSchema` type with the same schemars name and a different shape is a hard error. Today `merge_type` keeps the first writer (`entry().or_insert` at `crates/wicket-server/src/schemas/mod.rs:120` and `:126`) and drops the later type |
 | T-36 | Cursor pagination and filtering on list operations | M | T-30 | Limit and cursor are honoured; no handler hard-codes a null cursor on a non-empty page |
 | T-37 | Rate limit and method-not-allowed envelope | S | — | The documented burst limit returns its error code, and an unsupported method returns the envelope. Both are specified in `docs/10-api-conventions.md` and neither is implemented |
 | T-38 | CLI twin table and allowlist | M | T-34 | Every subcommand except process lifecycle has an operation or an allowlist row with a reason |
@@ -103,7 +107,7 @@ the wire. None of it is new functionality.
 | T-41 | Print log and template version bump | S | T-24 | Routed, or made crate-private |
 | T-42 | Ledger reversal, balance and projection verification | M | T-31 | No public ledger operation remains without a row or an allowlist entry |
 | T-43 | **The Goal 2 gate: capability coverage test** | M | T-24, T-38 | Boots both profiles, walks engine edges, job kinds, module routes and CLI subcommands against the table, and fails on any capability with no row and no allowlist entry |
-| T-44 | **DONE.** Golden OpenAPI fixture fails the build on path drift | S | T-23 | Closed 2026-09-15. `crates/wicket-server/tests/fixtures/openapi-operations.txt` holds the 57 **operations**, and `scripts/lint-openapi-fixture.sh` (wired into `just ci`) set-diffs it against the capability table, naming extras and missings. `just openapi-fixture` regenerates and is never a `ci` dependency; every sort is `LC_ALL=C` so regeneration is byte-stable across locales. The fixture keys on `(method, path)`, **not** paths: 57 operations span only 48 unique paths because 9 paths carry two methods, so a path-keyed fixture would miss method drift. A slice test also diffs the **served** document against the same fixture. The self-referential parity test named below is kept — its live-router bare-404 probe is independent — but it is no longer the only check |
+| T-44 | **DONE.** Golden OpenAPI fixture fails the build on path drift | S | T-23 | Closed 2026-09-15. `crates/wicket-server/tests/fixtures/openapi-operations.txt` holds the 72 **operations** (one comment line plus 72 `METHOD path` lines), and `scripts/lint-openapi-fixture.sh` (wired into `just ci`) set-diffs it against the capability table, naming extras and missings. `just openapi-fixture` regenerates and is never a `ci` dependency; every sort is `LC_ALL=C` so regeneration is byte-stable across locales. The fixture keys on `(method, path)`, **not** paths: 72 operations span 62 unique paths because 10 paths carry two methods, so a path-keyed fixture would miss method drift. A slice test also diffs the **served** document against the same fixture. The self-referential parity test named below is kept — its live-router bare-404 probe is independent — but it is no longer the only check |
 
 ---
 
@@ -120,10 +124,11 @@ claim in the plain-shop document was false, which for a Part 11 product is a cla
 have acted on. `setLotStatus` is omitted by id: it joins `(lot, release)` with
 `releaseFromQuarantine`, but its handler also serves `hold` and `reject`.
 
-**Wave 1 (typed request/response bodies) is gated on the `schemars` allow-list RFC** — GOV-7
-requires an accepted request for comment plus the allow-list edit in the same change. Decision
-recorded in ADR 0011. Residual from Wave 0: the header allowlists are hand-maintained and can
-drift from handlers; a derivation or a drift test is a follow-up.
+**Wave 1 typed bodies are partial.** 70 of 72 operations carry a 200 `application/json` schema
+on both profiles (fixtures `openapi-document.json` and `openapi-document-regulated.json`).
+`health` and `logout` do not, so this row stays open. Residual from Wave 0: the header
+allowlists are hand-maintained and can drift from handlers; a derivation or a drift test is a
+follow-up.
 
 ---
 
