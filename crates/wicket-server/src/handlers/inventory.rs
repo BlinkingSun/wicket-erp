@@ -5,7 +5,7 @@ use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Response};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use wicket_core::{Identifier, ItemId, LocationId, LotId};
 use wicket_db::Tx;
 use wicket_mod_inventory::{BalanceQuery, DocumentKind, LineInput, ReceiveRequest, ReleaseRequest};
@@ -30,7 +30,7 @@ pub struct OnHandBody {
     available: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ReceiptBody {
     #[serde(default)]
     item_id: Option<String>,
@@ -41,8 +41,10 @@ pub struct ReceiptBody {
     #[serde(default)]
     purchase_order: Option<String>,
     #[serde(default)]
+    #[schemars(with = "Option<wicket_mod_inventory::QuantityBody>")]
     quantity: Option<QuantityBody>,
     #[serde(default)]
+    #[schemars(with = "Option<wicket_mod_inventory::QuantityBody>")]
     entered: Option<QuantityBody>,
     #[serde(default)]
     unit_cost: Option<MoneyBody>,
@@ -50,6 +52,57 @@ pub struct ReceiptBody {
     lines: Option<Vec<ReceiptLine>>,
     #[serde(default)]
     actor_id: Option<String>,
+}
+
+/// `ReceiptLine` lives in `handlers/mod.rs` (shared with work-order issue).
+/// The derive cannot be added there from this lane, so the schema is
+/// implemented on the type `create_receipt` deserializes.
+impl JsonSchema for ReceiptLine {
+    fn schema_name() -> String {
+        "ReceiptLine".to_owned()
+    }
+
+    fn json_schema(generator: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+        let mut properties = schemars::Map::new();
+        properties.insert("item_id".to_owned(), generator.subschema_for::<String>());
+        for name in ["lot_id", "package_id"] {
+            properties.insert(
+                name.to_owned(),
+                null_default(generator.subschema_for::<Option<String>>()),
+            );
+        }
+        for name in ["quantity", "entered"] {
+            properties.insert(
+                name.to_owned(),
+                null_default(
+                    generator.subschema_for::<Option<wicket_mod_inventory::QuantityBody>>(),
+                ),
+            );
+        }
+        properties.insert(
+            "amount".to_owned(),
+            null_default(generator.subschema_for::<Option<MoneyBody>>()),
+        );
+        let mut required = schemars::Set::new();
+        required.insert("item_id".to_owned());
+        schemars::schema::SchemaObject {
+            instance_type: Some(schemars::schema::InstanceType::Object.into()),
+            object: Some(Box::new(schemars::schema::ObjectValidation {
+                properties,
+                required,
+                ..Default::default()
+            })),
+            ..Default::default()
+        }
+        .into()
+    }
+}
+
+/// `#[serde(default)]` on an optional field: omitted JSON is null.
+fn null_default(schema: schemars::schema::Schema) -> schemars::schema::Schema {
+    let mut obj = schema.into_object();
+    obj.metadata().default = Some(serde_json::Value::Null);
+    schemars::schema::Schema::Object(obj)
 }
 
 /// POST /api/v1/inventory/receipts
@@ -168,11 +221,12 @@ async fn receipt_inner(
     Ok((201, body))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ReleaseInvBody {
     lot_id: String,
     from_location_id: String,
     to_location_id: String,
+    #[schemars(with = "wicket_mod_inventory::QuantityBody")]
     entered: QuantityBody,
     #[serde(default)]
     amount: Option<MoneyBody>,
@@ -328,8 +382,8 @@ async fn on_hand_inner(
     })?)
 }
 
-#[derive(Deserialize)]
-struct CountBody {
+#[derive(Deserialize, JsonSchema)]
+pub struct CountBody {
     location_id: String,
     #[serde(default)]
     reference: Option<String>,
@@ -338,12 +392,14 @@ struct CountBody {
     tolerance: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 struct CountLineBody {
     item_id: String,
     #[serde(default)]
     lot_id: Option<String>,
+    #[schemars(with = "wicket_mod_inventory::QuantityBody")]
     counted: QuantityBody,
+    #[schemars(with = "wicket_mod_inventory::QuantityBody")]
     expected: QuantityBody,
 }
 
@@ -426,9 +482,18 @@ async fn count_inner(
     Ok((201, body))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
 pub struct ReversalBody {
     document_id: String,
+    reason: String,
+}
+
+/// POST `/api/v1/inventory/reversals` response: a document plus reversal fields.
+#[derive(Serialize, JsonSchema)]
+pub struct ReverseIssueBody {
+    #[serde(flatten)]
+    document: wicket_mod_inventory::DocumentBody,
+    reversal_group_id: String,
     reason: String,
 }
 
@@ -499,9 +564,11 @@ async fn reverse_inner(
     let reversal_group =
         wicket_mod_inventory::reverse_posted_issue(&mut tx, state.kernel(), &ctx, issue_id).await?;
     let posted = wicket_mod_inventory::load_document(&mut tx, issue_id).await?;
-    let mut payload = serde_json::to_value(wicket_mod_inventory::DocumentBody::from(&posted))?;
-    payload["reversal_group_id"] = json!(reversal_group.to_string());
-    payload["reason"] = json!(body.reason);
+    let payload = serde_json::to_value(ReverseIssueBody {
+        document: wicket_mod_inventory::DocumentBody::from(&posted),
+        reversal_group_id: reversal_group.to_string(),
+        reason: body.reason,
+    })?;
     idempotency::remember(&mut tx, key, &hash, 201, &payload).await?;
     tx.commit().await?;
     Ok((201, payload))
@@ -510,3 +577,161 @@ async fn reverse_inner(
 /// Health.
 #[allow(dead_code)]
 fn _health_marker() {}
+
+#[cfg(test)]
+mod wire_schema {
+    use super::*;
+    use serde_json::json;
+
+    fn sample_document() -> wicket_mod_inventory::DocumentBody {
+        wicket_mod_inventory::DocumentBody {
+            id: "01932c5a-8b10-7001-8000-0000000000f1".into(),
+            kind: "issue".into(),
+            status: "posted".into(),
+            reference: Some("WO-1".into()),
+            posted_group_id: Some("01932c5a-8b10-7001-8000-0000000000aa".into()),
+            version: 2,
+            lines: vec![wicket_mod_inventory::LineBody {
+                id: "01932c5a-8b10-7001-8000-0000000000bb".into(),
+                item_id: "01932c5a-8b10-7001-8000-000000000002".into(),
+                lot_id: Some("01932c5a-8b10-7001-8000-000000000004".into()),
+                serial_id: None,
+                from_location_id: Some("01932c5a-8b10-7001-8000-000000000008".into()),
+                to_location_id: None,
+                entered: wicket_mod_inventory::QuantityBody {
+                    amount: "10".into(),
+                    unit: 1,
+                    dimension: "Count".into(),
+                },
+                canonical: wicket_mod_inventory::QuantityBody {
+                    amount: "10".into(),
+                    unit: 1,
+                    dimension: "Count".into(),
+                },
+                conversion_factor: "1".into(),
+                reason_code: None,
+                package_id: None,
+            }],
+        }
+    }
+
+    #[test]
+    fn reverse_issue_named_type_matches_blob() {
+        let document = sample_document();
+        let mut blob = serde_json::to_value(&document).expect("document json");
+        blob["reversal_group_id"] = json!("01932c5a-8b10-7001-8000-0000000000cc");
+        blob["reason"] = json!("wrong WO pick");
+        let named = serde_json::to_value(&ReverseIssueBody {
+            document,
+            reversal_group_id: "01932c5a-8b10-7001-8000-0000000000cc".into(),
+            reason: "wrong WO pick".into(),
+        })
+        .expect("named json");
+        assert_eq!(blob, named);
+        assert_eq!(
+            serde_json::to_vec(&blob).expect("blob bytes"),
+            serde_json::to_vec(&named).expect("named bytes")
+        );
+    }
+
+    #[test]
+    fn document_body_has_no_reversal_keys() {
+        let json = serde_json::to_value(sample_document()).expect("document json");
+        assert!(json.get("reversal_group_id").is_none());
+        assert!(json.get("reason").is_none());
+        assert_eq!(
+            json["lines"][0]["entered"],
+            json!({"amount": "10", "unit": 1, "dimension": "Count"})
+        );
+    }
+
+    #[test]
+    fn inventory_schema_bindings_present() {
+        let all = crate::schemas::all();
+        for id in [
+            "releaseFromQuarantine",
+            "reverseIssue",
+            "createReceipt",
+            "createCount",
+        ] {
+            let binding = all.get(id).unwrap_or_else(|| panic!("{id} unregistered"));
+            assert!(binding.request.is_some(), "{id} request");
+            assert!(binding.response.is_object(), "{id} response");
+        }
+        let comps = crate::schemas::component_schemas();
+        for name in [
+            "DocumentBody",
+            "LineBody",
+            "QuantityBody",
+            "ReverseIssueBody",
+            "ReceiptBody",
+            "ReceiptLine",
+            "ReleaseInvBody",
+            "CountBody",
+            "ReversalBody",
+            "OnHandBody",
+        ] {
+            assert!(comps.contains_key(name), "{name} missing from components");
+        }
+        let reverse = &comps["ReverseIssueBody"];
+        let props = reverse["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("reverse schema not an object: {reverse}"));
+        assert!(
+            props.get("document").is_none(),
+            "nested document: {reverse}"
+        );
+        for key in [
+            "id",
+            "kind",
+            "status",
+            "reference",
+            "posted_group_id",
+            "version",
+            "lines",
+            "reversal_group_id",
+            "reason",
+        ] {
+            assert!(props.contains_key(key), "missing {key} in {reverse}");
+        }
+        let line_props = comps["ReceiptLine"]["properties"]
+            .as_object()
+            .unwrap_or_else(|| panic!("ReceiptLine schema: {}", comps["ReceiptLine"]));
+        for key in [
+            "item_id",
+            "lot_id",
+            "package_id",
+            "quantity",
+            "entered",
+            "amount",
+        ] {
+            assert!(line_props.contains_key(key), "missing {key} in ReceiptLine");
+        }
+        assert!(
+            comps["CountBody"]["properties"]["lines"]
+                .to_string()
+                .contains("CountLineBody")
+                || comps.contains_key("CountLineBody"),
+            "count lines: {}",
+            comps["CountBody"]
+        );
+    }
+
+    #[test]
+    fn request_quantity_matches_document_quantity_json() {
+        let wire = QuantityBody {
+            amount: "1.50".into(),
+            unit: 2,
+            dimension: "Length".into(),
+        };
+        let document = wicket_mod_inventory::QuantityBody {
+            amount: "1.50".into(),
+            unit: 2,
+            dimension: "Length".into(),
+        };
+        assert_eq!(
+            serde_json::to_value(wire).expect("wire quantity"),
+            serde_json::to_value(document).expect("document quantity")
+        );
+    }
+}

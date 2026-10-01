@@ -1,5 +1,6 @@
 //! HTTP contract: routes, error envelope, OpenAPI. No `axum` (CONTRACT §4).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -135,7 +136,7 @@ pub struct ErrorFields {
 }
 
 /// Wire quantity (`docs/10`: amount is a decimal string).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct QuantityBody {
     /// Amount as a decimal string.
     pub amount: String,
@@ -146,7 +147,7 @@ pub struct QuantityBody {
 }
 
 /// Wire document.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct DocumentBody {
     /// Id.
     pub id: String,
@@ -165,7 +166,7 @@ pub struct DocumentBody {
 }
 
 /// Wire document line. Lots and serials are entity ids, never text.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LineBody {
     /// Id.
     pub id: String,
