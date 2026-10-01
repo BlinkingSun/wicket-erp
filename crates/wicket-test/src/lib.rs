@@ -45,9 +45,56 @@ pub enum Error {
 
 static CASE_SEQ: AtomicU64 = AtomicU64::new(1);
 
+const DEFAULT_PG_PROBE_TIMEOUT_SECS: u64 = 2;
+const DEFAULT_PG_ACQUIRE_TIMEOUT_SECS: u64 = 5;
+
+/// Positive integer seconds from `raw`, or `default_secs` when unset or empty.
+/// Zero, negative, and non-integers are errors that name `name` — no fallback.
+fn parse_positive_secs(name: &str, raw: Option<&str>, default_secs: u64) -> Result<u64, String> {
+    let Some(raw) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(default_secs);
+    };
+    match raw.parse::<u64>() {
+        Ok(secs) if secs >= 1 => Ok(secs),
+        _ => Err(format!(
+            "{name} must be a positive integer number of seconds, got {raw:?}"
+        )),
+    }
+}
+
+fn env_positive_secs(name: &str, default_secs: u64) -> Result<u64, String> {
+    match std::env::var(name) {
+        Ok(raw) => parse_positive_secs(name, Some(&raw), default_secs),
+        Err(std::env::VarError::NotPresent) => parse_positive_secs(name, None, default_secs),
+        Err(e) => Err(format!(
+            "{name} must be a positive integer number of seconds: {e}"
+        )),
+    }
+}
+
+fn pg_probe_timeout() -> Result<Duration, String> {
+    env_positive_secs("WICKET_TEST_PG_TIMEOUT_SECS", DEFAULT_PG_PROBE_TIMEOUT_SECS)
+        .map(Duration::from_secs)
+}
+
+fn pg_acquire_timeout() -> Result<Duration, Error> {
+    env_positive_secs(
+        "WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS",
+        DEFAULT_PG_ACQUIRE_TIMEOUT_SECS,
+    )
+    .map(Duration::from_secs)
+    .map_err(Error::Env)
+}
+
 /// `Err(reason)` if `WICKET_MIGRATE_DATABASE_URL` is unset or the server does not
-/// answer within 2 s.
+/// answer within `WICKET_TEST_PG_TIMEOUT_SECS` (default 2). An invalid timeout
+/// knob is an error naming that variable.
 pub fn postgres_available() -> Result<(), String> {
+    let timeout = pg_probe_timeout()?;
+    env_positive_secs(
+        "WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS",
+        DEFAULT_PG_ACQUIRE_TIMEOUT_SECS,
+    )?;
     let url = match std::env::var("WICKET_MIGRATE_DATABASE_URL") {
         Ok(u) if !u.is_empty() => u,
         _ => return Err("WICKET_MIGRATE_DATABASE_URL is unset".to_string()),
@@ -60,12 +107,13 @@ pub fn postgres_available() -> Result<(), String> {
                 .build()
                 .map_err(|e| format!("runtime: {e}"))?;
             rt.block_on(async move {
-                match tokio::time::timeout(Duration::from_secs(2), PgConnection::connect(&url))
-                    .await
-                {
+                match tokio::time::timeout(timeout, PgConnection::connect(&url)).await {
                     Ok(Ok(_conn)) => Ok(()),
                     Ok(Err(e)) => Err(format!("postgres unavailable: {e}")),
-                    Err(_) => Err("server did not answer within 2 s".to_string()),
+                    Err(_) => Err(format!(
+                        "server did not answer within {} s",
+                        timeout.as_secs()
+                    )),
                 }
             })
         })
@@ -144,9 +192,10 @@ impl TestDb {
     pub async fn bootstrap_pool(&self) -> Result<PgPool, Error> {
         let url = rewrite_database(&self.bootstrap_url, &self.database)?;
         let opts = bootstrap_options(&url)?;
+        let acquire = pg_acquire_timeout()?;
         Ok(PgPoolOptions::new()
             .max_connections(2)
-            .acquire_timeout(Duration::from_secs(5))
+            .acquire_timeout(acquire)
             .connect_with(opts)
             .await?)
     }
@@ -216,7 +265,11 @@ macro_rules! db_case {
     ($name:expr) => {{
         if ::std::env::var("WICKET_REQUIRE_PG").ok().as_deref() == Some("1") {
             $crate::require_postgres();
-        } else if let Err(_reason) = $crate::postgres_available() {
+        } else if let Err(reason) = $crate::postgres_available() {
+            // A bad timeout knob must not look like "Postgres is down" and skip.
+            if reason.contains("WICKET_TEST_PG_") {
+                panic!("{reason}");
+            }
             return;
         }
         $crate::TestDb::case($name)
@@ -284,9 +337,10 @@ fn rewrite_database(url: &str, database: &str) -> Result<String, Error> {
 }
 
 async fn open_pool(url: &str) -> Result<PgPool, Error> {
+    let acquire = pg_acquire_timeout()?;
     Ok(PgPoolOptions::new()
         .max_connections(2)
-        .acquire_timeout(Duration::from_secs(5))
+        .acquire_timeout(acquire)
         .after_connect(|c, _meta| {
             Box::pin(async move {
                 sqlx::raw_sql(
@@ -393,13 +447,15 @@ async fn drop_database(bootstrap_url: &str, database: &str) -> Result<(), Error>
 }
 
 async fn connect_bootstrap(bootstrap_url: &str) -> Result<PgConnection, Error> {
+    let timeout = pg_probe_timeout().map_err(Error::Env)?;
     let opts = bootstrap_options(bootstrap_url)?;
-    match tokio::time::timeout(Duration::from_secs(2), PgConnection::connect_with(&opts)).await {
+    match tokio::time::timeout(timeout, PgConnection::connect_with(&opts)).await {
         Ok(Ok(conn)) => Ok(conn),
         Ok(Err(e)) => Err(Error::Unavailable(format!("bootstrap connect: {e}"))),
-        Err(_) => Err(Error::Unavailable(
-            "bootstrap server did not answer within 2 s".to_string(),
-        )),
+        Err(_) => Err(Error::Unavailable(format!(
+            "bootstrap server did not answer within {} s",
+            timeout.as_secs()
+        ))),
     }
 }
 
@@ -544,7 +600,10 @@ mod tests {
     async fn clone_retries_while_template_is_in_use() {
         if std::env::var("WICKET_REQUIRE_PG").ok().as_deref() == Some("1") {
             require_postgres();
-        } else if let Err(_reason) = postgres_available() {
+        } else if let Err(reason) = postgres_available() {
+            if reason.contains("WICKET_TEST_PG_") {
+                panic!("{reason}");
+            }
             return;
         }
 
@@ -855,5 +914,114 @@ mod tests {
     fn error_unavailable_formats() {
         let err = Error::Unavailable("no url".into());
         assert!(err.to_string().contains("unavailable"));
+    }
+
+    #[test]
+    fn pg_connect_timeout_secs_default_override_and_reject() {
+        let name = "WICKET_TEST_PG_TIMEOUT_SECS";
+        assert_eq!(parse_positive_secs(name, None, 2).expect("default"), 2);
+        assert_eq!(parse_positive_secs(name, Some(""), 2).expect("empty"), 2);
+        assert_eq!(
+            parse_positive_secs(name, Some("10"), 2).expect("override"),
+            10
+        );
+        for bad in ["0", "-1", "abc", "1.5"] {
+            let err = parse_positive_secs(name, Some(bad), 2).expect_err("reject");
+            assert!(err.contains(name), "{bad}: {err}");
+        }
+        let secs = parse_positive_secs(name, None, 2).expect("default");
+        assert_eq!(
+            format!("server did not answer within {secs} s"),
+            "server did not answer within 2 s"
+        );
+        assert_eq!(
+            format!("bootstrap server did not answer within {secs} s"),
+            "bootstrap server did not answer within 2 s"
+        );
+    }
+
+    #[test]
+    fn pg_acquire_timeout_secs_default_override_and_reject() {
+        let name = "WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS";
+        assert_eq!(parse_positive_secs(name, None, 5).expect("default"), 5);
+        assert_eq!(parse_positive_secs(name, Some(""), 5).expect("empty"), 5);
+        assert_eq!(
+            parse_positive_secs(name, Some("10"), 5).expect("override"),
+            10
+        );
+        for bad in ["0", "-3", "nope"] {
+            let err = parse_positive_secs(name, Some(bad), 5).expect_err("reject");
+            assert!(err.contains(name), "{bad}: {err}");
+        }
+    }
+
+    #[test]
+    fn pg_timeout_env_reads_default_override_and_reject() {
+        if std::env::var("WICKET_TEST_CHILD").ok().as_deref() != Some("1") {
+            for (case, connect, acquire) in [
+                ("default", None, None),
+                ("override", Some("10"), Some("10")),
+                ("bad", Some("0"), Some("-1")),
+            ] {
+                let exe = std::env::current_exe().expect("current_exe");
+                let mut cmd = Command::new(exe);
+                cmd.args([
+                    "pg_timeout_env_reads_default_override_and_reject",
+                    "--exact",
+                    "--nocapture",
+                ]);
+                cmd.env("WICKET_TEST_CHILD", "1");
+                cmd.env("WICKET_TIMEOUT_CASE", case);
+                match connect {
+                    Some(v) => {
+                        cmd.env("WICKET_TEST_PG_TIMEOUT_SECS", v);
+                    }
+                    None => {
+                        cmd.env_remove("WICKET_TEST_PG_TIMEOUT_SECS");
+                    }
+                }
+                match acquire {
+                    Some(v) => {
+                        cmd.env("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS", v);
+                    }
+                    None => {
+                        cmd.env_remove("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS");
+                    }
+                }
+                let out = cmd.output().expect("spawn child test");
+                assert_child_ok(&out);
+            }
+            return;
+        }
+        match std::env::var("WICKET_TIMEOUT_CASE").expect("case").as_str() {
+            "default" => {
+                assert_eq!(
+                    env_positive_secs("WICKET_TEST_PG_TIMEOUT_SECS", 2).expect("default"),
+                    2
+                );
+                assert_eq!(
+                    env_positive_secs("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS", 5).expect("default"),
+                    5
+                );
+            }
+            "override" => {
+                assert_eq!(
+                    env_positive_secs("WICKET_TEST_PG_TIMEOUT_SECS", 2).expect("override"),
+                    10
+                );
+                assert_eq!(
+                    env_positive_secs("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS", 5).expect("override"),
+                    10
+                );
+            }
+            "bad" => {
+                let err = env_positive_secs("WICKET_TEST_PG_TIMEOUT_SECS", 2).expect_err("reject");
+                assert!(err.contains("WICKET_TEST_PG_TIMEOUT_SECS"), "{err}");
+                let err = env_positive_secs("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS", 5)
+                    .expect_err("reject");
+                assert!(err.contains("WICKET_TEST_PG_ACQUIRE_TIMEOUT_SECS"), "{err}");
+            }
+            other => panic!("unknown timeout case {other}"),
+        }
     }
 }

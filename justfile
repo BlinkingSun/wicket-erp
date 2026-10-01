@@ -323,8 +323,10 @@ test-lib:
 
 # Database tests; missing Postgres is a failure.
 # Resolves WICKET_TEST_TEMPLATE / WICKET_TEST_DB (defaults match public CI).
+# Fails closed before cargo when WICKET_MIGRATE_DATABASE_URL is unset.
 test-db:
     . "{{root}}/scripts/wicket-db-env.sh"; \
+    wicket_fail_closed_migrate_url; \
     WICKET_REQUIRE_PG=1 cargo test --manifest-path "{{root}}/Cargo.toml" --workspace --all-features
 
 # Bring Postgres up. Docker when present; otherwise pg_isready, fail closed.
@@ -473,7 +475,12 @@ ci: fmt-check clippy lint-sql lint-mounts lint-module-manifests lint-openapi-fix
 # CI plus database tests (`ci` then `test-db`). This recipe, not `ci`, runs the
 # integration tests under crates/*/tests/, including Wave 2s slice acceptance,
 # because `test-lib` passes `--lib`.
-ci-db: ci test-db
+# Fails closed before cargo when WICKET_MIGRATE_DATABASE_URL is unset.
+ci-db:
+    . "{{root}}/scripts/wicket-db-env.sh"; \
+    wicket_fail_closed_migrate_url; \
+    just ci; \
+    just test-db
 
 # First-party web interface (apps/wicket-web). Not part of `ci` / `ci-db`.
 # A contributor with no Node installed must still be able to run `just ci`.

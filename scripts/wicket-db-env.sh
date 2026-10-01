@@ -46,6 +46,23 @@ fi
 
 export WICKET_TEST_TEMPLATE WICKET_TEST_DB
 
+# just test-db / just ci-db call this before cargo. Prints the CONTRIBUTING.md §6
+# export block on stderr and returns 1 when the migrate URL is unset.
+wicket_fail_closed_migrate_url() {
+  if [ -n "${WICKET_MIGRATE_DATABASE_URL:-}" ]; then
+    return 0
+  fi
+  echo "WICKET_MIGRATE_DATABASE_URL is unset" >&2
+  cat >&2 <<'EOF'
+export WICKET_TEST_TEMPLATE=wicket_tpl_<lane> WICKET_TEST_DB=wicket_<lane> \
+  WICKET_DATABASE_URL="postgres://wicket_app:wicket@127.0.0.1:5432/wicket_<lane>?sslmode=disable" \
+  WICKET_MIGRATE_DATABASE_URL="postgres://wicket_migrate:wicket@127.0.0.1:5432/wicket_<lane>?sslmode=disable" \
+  WICKET_BOOTSTRAP_URL="postgres://127.0.0.1:5432/postgres?sslmode=disable" \
+  WICKET_BLOB_ROOT=/tmp/wicket-blobs-<lane> WICKET_PROFILE=plain-shop WICKET_REQUIRE_PG=1
+EOF
+  return 1
+}
+
 if [ "${BASH_SOURCE[0]-}" = "$0" ]; then
   printf 'WICKET_TEST_TEMPLATE=%s\n' "$WICKET_TEST_TEMPLATE"
   printf 'WICKET_TEST_DB=%s\n' "$WICKET_TEST_DB"
