@@ -1203,7 +1203,7 @@
           },
           "lines": {
             "items": {
-              "$ref": "#/components/schemas/WorkOrderIssueLine"
+              "$ref": "#/components/schemas/ReceiptLine"
             },
             "type": "array"
           }
@@ -3965,60 +3965,6 @@
           "version"
         ],
         "title": "WorkOrderCompleteJson",
-        "type": "object"
-      },
-      "WorkOrderIssueLine": {
-        "description": "Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here).",
-        "properties": {
-          "amount": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MoneyBody"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "entered": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnyQuantity"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "item_id": {
-            "type": "string"
-          },
-          "lot_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "package_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "quantity": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AnyQuantity"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "item_id"
-        ],
         "type": "object"
       },
       "WorkOrderJson": {

@@ -23,7 +23,7 @@ use crate::error::{Error, Result};
 use crate::extract::{self, check_version, require_if_match};
 use crate::idempotency;
 use crate::session::write_context;
-use crate::wire::{MoneyBody, QuantityBody, parse_uuid};
+use crate::wire::{QuantityBody, parse_uuid};
 
 use axum::body::Bytes;
 
@@ -356,24 +356,9 @@ async fn release_wo_inner(
     Ok((200, body))
 }
 
-/// Schema-only mirror of `ReceiptLine` (lives in `handlers/mod.rs`, not owned here).
-#[allow(dead_code)]
-#[derive(JsonSchema)]
-struct WorkOrderIssueLine {
-    item_id: String,
-    lot_id: Option<String>,
-    package_id: Option<String>,
-    #[schemars(with = "Option<wicket_core::AnyQuantity>")]
-    quantity: Option<QuantityBody>,
-    #[schemars(with = "Option<wicket_core::AnyQuantity>")]
-    entered: Option<QuantityBody>,
-    amount: Option<MoneyBody>,
-}
-
 #[derive(Deserialize, JsonSchema)]
 pub struct IssueBody {
     from_location_id: String,
-    #[schemars(with = "Vec<WorkOrderIssueLine>")]
     lines: Vec<ReceiptLine>,
 }
 
